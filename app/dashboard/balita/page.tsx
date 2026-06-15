@@ -13,9 +13,13 @@ import {
 import Link from "next/link";
 import Navbar from "@/components/layout/Navbar";
 import Card from "@/components/ui/Card";
-import { EmptyState, PageHeader } from "@/components/ui/PageParts";
-import { getBalitaList } from "@/lib/api";
-import { Balita } from "@/types";
+import {
+  EmptyState,
+  PageHeader,
+  PageStatusState,
+} from "@/components/ui/PageParts";
+import { getBalitaList, getPengukuranList } from "@/lib/api";
+import { Balita, Pengukuran } from "@/types";
 
 type GenderFilter = "SEMUA" | Balita["jenisKelamin"];
 type AgeUnit = "bulan" | "tahun";
@@ -105,15 +109,41 @@ function formatAgeLabel(birthDateString: string): string {
 export default function DaftarBalitaPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [balitaList, setBalitaList] = useState<Balita[]>([]);
+  const [currentPengukuran, setCurrentPengukuran] = useState<Pengukuran[]>([]);
+  const [loadState, setLoadState] = useState<"loading" | "success" | "error">(
+    "loading",
+  );
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [appliedFilters, setAppliedFilters] =
     useState<BalitaFilters>(EMPTY_FILTERS);
   const [draftFilters, setDraftFilters] =
     useState<BalitaFilters>(EMPTY_FILTERS);
+  const currentMonth = new Date().getMonth() + 1;
+  const currentYear = new Date().getFullYear();
 
   useEffect(() => {
-    getBalitaList().then(setBalitaList).catch(console.error);
-  }, []);
+    let isActive = true;
+
+    Promise.resolve().then(() => {
+      if (isActive) setLoadState("loading");
+    });
+
+    Promise.all([getBalitaList(), getPengukuranList(currentMonth, currentYear)])
+      .then(([balitaData, pengukuranData]) => {
+        if (!isActive) return;
+        setBalitaList(balitaData);
+        setCurrentPengukuran(pengukuranData);
+        setLoadState("success");
+      })
+      .catch((err) => {
+        console.error(err);
+        if (isActive) setLoadState("error");
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [currentMonth, currentYear]);
 
   const rtOptions = useMemo(
     () =>
@@ -139,13 +169,11 @@ export default function DaftarBalitaPage() {
     [balitaList],
   );
 
-  const currentMonth = new Date().getMonth() + 1;
-  const currentYear = new Date().getFullYear();
+  const measuredBalitaIds = new Set(
+    currentPengukuran.map((pengukuran) => pengukuran.balitaId).filter(Boolean),
+  );
   const measuredCount = balitaList.filter((balita) =>
-    balita.pengukuran?.some(
-      (pengukuran) =>
-        pengukuran.bulan === currentMonth && pengukuran.tahun === currentYear,
-    ),
+    measuredBalitaIds.has(balita.id),
   ).length;
   const draftAgeMin = parseFilterNumber(draftFilters.ageMin);
   const draftAgeMax = parseFilterNumber(draftFilters.ageMax);
@@ -225,6 +253,29 @@ export default function DaftarBalitaPage() {
   const resetDraftFilters = () => {
     setDraftFilters({ ...EMPTY_FILTERS });
   };
+
+  if (loadState !== "success") {
+    return (
+      <div className="min-h-screen bg-gray-50 text-black font-sans pb-10">
+        <Navbar title="Daftar Balita" />
+        <main className="p-4 sm:p-6 max-w-6xl mx-auto mt-2">
+          <PageStatusState
+            tone={loadState === "error" ? "error" : "loading"}
+            title={
+              loadState === "error"
+                ? "Daftar balita belum bisa dimuat"
+                : "Memuat daftar balita"
+            }
+            description={
+              loadState === "error"
+                ? "Terjadi gangguan saat mengambil data balita atau status pengukuran bulan ini. Coba muat ulang halaman."
+                : "Mengambil data balita dan pengukuran bulan ini."
+            }
+          />
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 text-black font-sans pb-10">
@@ -327,11 +378,7 @@ export default function DaftarBalitaPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {filteredData.length > 0 ? (
             filteredData.map((balita) => {
-              const isMeasured = balita.pengukuran?.some(
-                (pengukuran) =>
-                  pengukuran.bulan === currentMonth &&
-                  pengukuran.tahun === currentYear,
-              );
+              const isMeasured = measuredBalitaIds.has(balita.id);
 
               return (
                 <Card

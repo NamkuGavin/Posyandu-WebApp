@@ -3,10 +3,12 @@ export interface Pengukuran {
   balitaId?: string;
   bulan: number;       // 1-12
   tahun: number;       // e.g. 2026
+  tglUkur?: string;
   beratBadan: number;  // kg
   tinggiBadan: number; // cm
   lingkarKepala: number | null; // cm
   lingkarLengan: number | null; // cm
+  lila?: number | null;
   createdAt?: string;
 }
 

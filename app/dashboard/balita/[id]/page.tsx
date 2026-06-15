@@ -16,9 +16,14 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import Navbar from "@/components/layout/Navbar";
 import Card from "@/components/ui/Card";
-import { InfoPanel } from "@/components/ui/PageParts";
-import { getBalitaById, deleteBalita, getEvaluasi } from "@/lib/api";
-import { Balita } from "@/types";
+import { InfoPanel, PageStatusState } from "@/components/ui/PageParts";
+import {
+  getBalitaById,
+  deleteBalita,
+  getEvaluasi,
+  getPengukuranList,
+} from "@/lib/api";
+import { Balita, Pengukuran } from "@/types";
 import { useToast } from "@/components/ui/Toast";
 import {
   ResponsiveContainer,
@@ -175,6 +180,12 @@ export default function DetailBalitaPage() {
   const router = useRouter();
   const id = params.id as string;
   const [balita, setBalita] = useState<Balita | null>(null);
+  const [measurementHistory, setMeasurementHistory] = useState<Pengukuran[]>(
+    [],
+  );
+  const [loadState, setLoadState] = useState<"loading" | "success" | "error">(
+    "loading",
+  );
 
   // State untuk konfirmasi hapus inline & Toast
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -201,15 +212,47 @@ export default function DetailBalitaPage() {
   const [aiAnalysisText, setAiAnalysisText] = useState("");
 
   useEffect(() => {
-    getBalitaById(id).then((found) => {
-      setBalita(found);
+    let isActive = true;
+
+    Promise.resolve().then(() => {
+      if (isActive) setLoadState("loading");
     });
-  }, [id]);
+
+    Promise.all([
+      getBalitaById(id),
+      getPengukuranList(currentMonth, currentYear),
+    ])
+      .then(([found, list]) => {
+        if (!isActive) return;
+        if (!found) {
+          setLoadState("error");
+          return;
+        }
+
+        setBalita(found);
+        setMeasurementHistory(
+          list.filter((pengukuran) => pengukuran.balitaId === id),
+        );
+        setLoadState("success");
+      })
+      .catch((err) => {
+        console.error(err);
+        if (isActive) setLoadState("error");
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [currentMonth, currentYear, id]);
 
   useEffect(() => {
     if (!balita) return;
     setIsAiLoading(true);
-    getEvaluasi(balita)
+    getEvaluasi({
+      ...balita,
+      pengukuran:
+        measurementHistory.length > 0 ? measurementHistory : balita.pengukuran,
+    })
       .then((data) => {
         setAiAnalysisText(data.analisis);
       })
@@ -219,25 +262,47 @@ export default function DetailBalitaPage() {
       .finally(() => {
         setIsAiLoading(false);
       });
-  }, [balita]);
+  }, [balita, measurementHistory]);
 
-  if (!balita) {
+  if (loadState !== "success" || !balita || balita.id !== id) {
     return (
-      <div className="min-h-screen bg-gray-50 text-black font-sans flex items-center justify-center">
-        <div className="text-center space-y-2">
-          <div className="w-8 h-8 border-4 border-teal-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
-          <p className="text-xs font-semibold text-gray-500 font-sans">
-            Memuat data balita...
-          </p>
-        </div>
+      <div className="min-h-screen bg-gray-50 text-black font-sans pb-10">
+        <Navbar title="Detail Balita" />
+        <main className="p-4 sm:p-6 max-w-6xl mx-auto mt-2">
+          <PageStatusState
+            tone={loadState === "error" ? "error" : "loading"}
+            title={
+              loadState === "error"
+                ? "Detail balita belum bisa dimuat"
+                : "Memuat detail balita"
+            }
+            description={
+              loadState === "error"
+                ? "Terjadi gangguan saat mengambil data balita atau status pengukuran bulan ini. Coba muat ulang halaman."
+                : "Mengambil data balita dan status pengukuran bulan ini."
+            }
+          />
+        </main>
       </div>
     );
   }
 
-  const isMeasuredThisMonth =
-    balita.pengukuran?.some(
-      (p) => p.bulan === currentMonth && p.tahun === currentYear,
-    ) ?? false;
+  const mergedPengukuran = [
+    ...(balita.pengukuran ?? []),
+    ...measurementHistory,
+  ];
+  const pengukuranHistory = Array.from(
+    new Map(
+      mergedPengukuran.map((pengukuran, index) => [
+        pengukuran.id ??
+          `${pengukuran.balitaId}-${pengukuran.tahun}-${pengukuran.bulan}-${index}`,
+        pengukuran,
+      ]),
+    ).values(),
+  );
+  const isMeasuredThisMonth = pengukuranHistory.some(
+    (p) => p.bulan === currentMonth && p.tahun === currentYear,
+  );
 
   const actionButtons = [
     {
@@ -282,7 +347,9 @@ export default function DetailBalitaPage() {
         </div>
 
         <InfoPanel title="Panduan detail balita">
-          Gunakan tombol Ukur untuk menambah pengukuran, Edit Data untuk memperbaiki biodata atau pengukuran yang sudah ada, dan lihat grafik untuk memantau perubahan dari bulan ke bulan.
+          Gunakan tombol Ukur untuk menambah pengukuran, Edit Data untuk
+          memperbaiki biodata atau pengukuran yang sudah ada, dan lihat grafik
+          untuk memantau perubahan dari bulan ke bulan.
         </InfoPanel>
 
         {/* Responsive Grid Wrapper */}
@@ -422,7 +489,7 @@ export default function DetailBalitaPage() {
               </div>
 
               <GrafikPertumbuhan
-                riwayat={balita.pengukuran || []}
+                riwayat={pengukuranHistory}
                 activeTab={activeChartTab}
                 year={selectedYearGraph}
               />
@@ -461,11 +528,10 @@ export default function DetailBalitaPage() {
                   <div className="text-center">LK</div>
                   <div className="text-center">LL</div>
                 </div>
-                {balita.pengukuran &&
-                balita.pengukuran.filter(
+                {pengukuranHistory.filter(
                   (p) => p.tahun.toString() === selectedYearHistory,
                 ).length > 0 ? (
-                  balita.pengukuran
+                  pengukuranHistory
                     .filter((p) => p.tahun.toString() === selectedYearHistory)
                     .sort((a, b) => b.bulan - a.bulan)
                     .map((p, idx) => {

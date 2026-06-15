@@ -6,6 +6,20 @@ import {
   KaderProfile,
 } from "@/types";
 
+type RawPengukuran = Record<string, unknown> & {
+  id?: string;
+  balitaId?: string;
+  bulan?: unknown;
+  tahun?: unknown;
+  tglUkur?: string;
+  beratBadan?: unknown;
+  tinggiBadan?: unknown;
+  lingkarKepala?: unknown;
+  lingkarLengan?: unknown;
+  lila?: unknown;
+  createdAt?: string;
+};
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "");
 
 function getApiUrl() {
@@ -14,6 +28,67 @@ function getApiUrl() {
   }
 
   return API_URL;
+}
+
+function toNullableNumber(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function getMeasurementPeriod(
+  raw: RawPengukuran,
+  fallbackBulan?: number,
+  fallbackTahun?: number,
+) {
+  const directBulan = toNullableNumber(raw?.bulan);
+  const directTahun = toNullableNumber(raw?.tahun);
+
+  if (directBulan && directTahun) {
+    return { bulan: directBulan, tahun: directTahun };
+  }
+
+  if (raw?.tglUkur) {
+    const date = new Date(raw.tglUkur);
+    if (!Number.isNaN(date.getTime())) {
+      return {
+        bulan: date.getUTCMonth() + 1,
+        tahun: date.getUTCFullYear(),
+      };
+    }
+  }
+
+  return {
+    bulan: fallbackBulan ?? 0,
+    tahun: fallbackTahun ?? 0,
+  };
+}
+
+function normalizePengukuran(
+  raw: RawPengukuran,
+  fallbackBulan?: number,
+  fallbackTahun?: number,
+): Pengukuran {
+  const period = getMeasurementPeriod(raw, fallbackBulan, fallbackTahun);
+  const lingkarLengan = toNullableNumber(raw?.lingkarLengan ?? raw?.lila);
+
+  return {
+    id: raw?.id,
+    balitaId: raw?.balitaId,
+    bulan: period.bulan,
+    tahun: period.tahun,
+    tglUkur: raw?.tglUkur,
+    beratBadan: Number(raw?.beratBadan ?? 0),
+    tinggiBadan: Number(raw?.tinggiBadan ?? 0),
+    lingkarKepala: toNullableNumber(raw?.lingkarKepala),
+    lingkarLengan,
+    lila: lingkarLengan,
+    createdAt: raw?.createdAt,
+  };
+}
+
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
 }
 
 // Client-side cookie utilities
@@ -81,10 +156,10 @@ export async function login(
     }
     setCookie("session", data.access_token, 7);
     return { success: true, token: data.access_token };
-  } catch (err: any) {
+  } catch (err: unknown) {
     return {
       success: false,
-      error: err.message || "Terjadi kesalahan jaringan",
+      error: getErrorMessage(err, "Terjadi kesalahan jaringan"),
     };
   }
 }
@@ -128,7 +203,9 @@ export async function getBalitaById(id: string): Promise<Balita | null> {
   return res.json();
 }
 
-export async function createBalita(balita: any): Promise<Balita> {
+export async function createBalita(
+  balita: Record<string, unknown>,
+): Promise<Balita> {
   const res = await authFetch("/balita", {
     method: "POST",
     body: JSON.stringify(balita),
@@ -207,6 +284,23 @@ export async function addPengukuran(
     const err = await res.json();
     throw new Error(err.message || "Gagal menambah pengukuran");
   }
+}
+
+export async function getPengukuranList(
+  bulan: number,
+  tahun: number,
+): Promise<Pengukuran[]> {
+  const query = new URLSearchParams({
+    tahun: tahun.toString(),
+    bulan: bulan.toString(),
+  });
+  const res = await authFetch(`/pengukuran?${query.toString()}`);
+  if (!res.ok) throw new Error("Gagal mengambil data pengukuran");
+
+  const data = await res.json();
+  if (!Array.isArray(data)) return [];
+
+  return data.map((item) => normalizePengukuran(item, bulan, tahun));
 }
 
 // Absensi

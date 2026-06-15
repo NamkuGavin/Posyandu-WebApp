@@ -6,22 +6,51 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import Navbar from "@/components/layout/Navbar";
 import Card from "@/components/ui/Card";
-import { EmptyState, InfoPanel, PageHeader } from "@/components/ui/PageParts";
-import { getBalitaList } from "@/lib/api";
-import { Balita } from "@/types";
+import {
+  EmptyState,
+  InfoPanel,
+  PageHeader,
+  PageStatusState,
+} from "@/components/ui/PageParts";
+import { getBalitaList, getPengukuranList } from "@/lib/api";
+import { Balita, Pengukuran } from "@/types";
 
 function CariBalitaContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [searchTerm, setSearchTerm] = useState("");
   const [balitaList, setBalitaList] = useState<Balita[]>([]);
+  const [currentPengukuran, setCurrentPengukuran] = useState<Pengukuran[]>([]);
+  const [loadState, setLoadState] = useState<"loading" | "success" | "error">(
+    "loading",
+  );
   const isMeasurementMode = searchParams.get("mode") === "ukur";
   const currentMonth = new Date().getMonth() + 1;
   const currentYear = new Date().getFullYear();
 
   useEffect(() => {
-    getBalitaList().then(setBalitaList).catch(console.error);
-  }, []);
+    let isActive = true;
+
+    Promise.resolve().then(() => {
+      if (isActive) setLoadState("loading");
+    });
+
+    Promise.all([getBalitaList(), getPengukuranList(currentMonth, currentYear)])
+      .then(([balitaData, pengukuranData]) => {
+        if (!isActive) return;
+        setBalitaList(balitaData);
+        setCurrentPengukuran(pengukuranData);
+        setLoadState("success");
+      })
+      .catch((err) => {
+        console.error(err);
+        if (isActive) setLoadState("error");
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [currentMonth, currentYear]);
 
   useEffect(() => {
     const nameParam = searchParams.get("name");
@@ -30,13 +59,13 @@ function CariBalitaContent() {
     }
   }, [searchParams]);
 
+  const measuredBalitaIds = new Set(
+    currentPengukuran.map((pengukuran) => pengukuran.balitaId).filter(Boolean),
+  );
+
   const selectableBalitaList = isMeasurementMode
     ? balitaList.filter((balita) => {
-        const isMeasuredThisMonth = balita.pengukuran?.some(
-          (pengukuran) =>
-            pengukuran.bulan === currentMonth &&
-            pengukuran.tahun === currentYear,
-        );
+        const isMeasuredThisMonth = measuredBalitaIds.has(balita.id);
         return !isMeasuredThisMonth;
       })
     : balitaList;
@@ -52,6 +81,31 @@ function CariBalitaContent() {
     isMeasurementMode && selectableBalitaList.length === 0
       ? "Tidak ada balita yang perlu diinput pengukurannya untuk periode saat ini."
       : "Coba ketik nama lain atau periksa kembali ejaan nama balita.";
+
+  if (loadState !== "success") {
+    return (
+      <div className="min-h-screen bg-gray-50 text-black font-sans pb-10">
+        <Navbar
+          title={isMeasurementMode ? "Input Pengukuran" : "Pilih Balita"}
+        />
+        <main className="p-4 sm:p-6 max-w-3xl mx-auto mt-2">
+          <PageStatusState
+            tone={loadState === "error" ? "error" : "loading"}
+            title={
+              loadState === "error"
+                ? "Data pencarian belum bisa dimuat"
+                : "Memuat data pencarian"
+            }
+            description={
+              loadState === "error"
+                ? "Terjadi gangguan saat mengambil data balita atau status pengukuran bulan ini. Coba muat ulang halaman."
+                : "Mengambil data balita dan status pengukuran bulan ini."
+            }
+          />
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 text-black font-sans pb-10">
@@ -82,7 +136,8 @@ function CariBalitaContent() {
 
         {isMeasurementMode && (
           <InfoPanel title="Mode input pengukuran">
-            Pilih salah satu balita. Setelah dipilih, halaman akan langsung membuka form pengukuran.
+            Pilih salah satu balita. Setelah dipilih, halaman akan langsung
+            membuka form pengukuran.
           </InfoPanel>
         )}
 
@@ -159,7 +214,9 @@ export default function CariBalitaPage() {
         <div className="min-h-screen bg-gray-50 text-black font-sans flex items-center justify-center">
           <div className="text-center space-y-2">
             <div className="w-8 h-8 border-4 border-teal-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
-            <p className="text-sm font-bold text-gray-500">Memuat pencarian...</p>
+            <p className="text-sm font-bold text-gray-500">
+              Memuat pencarian...
+            </p>
           </div>
         </div>
       }
