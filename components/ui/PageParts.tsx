@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { LucideIcon, Info, Search } from "lucide-react";
+import { AlertCircle, LoaderCircle, LucideIcon, Info, Search } from "lucide-react";
 
 export function PageHeader({
   eyebrow,
@@ -90,6 +90,40 @@ export function EmptyState({
         </p>
       )}
       {action && <div className="mt-4">{action}</div>}
+    </div>
+  );
+}
+
+export function PageStatusState({
+  title,
+  description,
+  tone = "loading",
+}: {
+  title: string;
+  description: string;
+  tone?: "loading" | "error";
+}) {
+  const Icon = tone === "error" ? AlertCircle : LoaderCircle;
+  const iconClass =
+    tone === "error"
+      ? "bg-rose-50 text-rose-600 border-rose-100"
+      : "bg-[#f0fbf9] text-[#0d9488] border-teal-100";
+
+  return (
+    <div className="rounded-xl border border-gray-100 bg-white p-8 sm:p-10 text-center shadow-sm">
+      <div
+        className={`mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border ${iconClass}`}
+      >
+        <Icon
+          size={28}
+          strokeWidth={2.5}
+          className={tone === "loading" ? "animate-spin" : undefined}
+        />
+      </div>
+      <p className="text-sm font-black text-gray-900">{title}</p>
+      <p className="mx-auto mt-2 max-w-md text-xs font-semibold leading-relaxed text-gray-500">
+        {description}
+      </p>
     </div>
   );
 }

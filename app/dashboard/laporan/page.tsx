@@ -1,14 +1,14 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { 
+import {
   AlertCircle,
   BarChart3,
-  ChevronDown, 
+  ChevronDown,
   ClipboardCheck,
-  Users, 
+  Users,
   FileSpreadsheet,
-  Download, 
+  Download,
   MapPinned,
   Ruler,
   UserRound,
@@ -16,8 +16,14 @@ import {
 } from "lucide-react";
 import Navbar from "@/components/layout/Navbar";
 import Card from "@/components/ui/Card";
-import { getBalitaList, getAbsensiList, exportLaporanExcel } from "@/lib/api";
-import { Balita, Absensi } from "@/types";
+import { PageStatusState } from "@/components/ui/PageParts";
+import {
+  getBalitaList,
+  getAbsensiList,
+  exportLaporanExcel,
+  getPengukuranList,
+} from "@/lib/api";
+import { Balita, Absensi, Pengukuran } from "@/types";
 import { useToast } from "@/components/ui/Toast";
 
 const months = [
@@ -78,7 +84,9 @@ const StatCard = ({
           {value}
         </p>
       </div>
-      <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${tone}`}>
+      <div
+        className={`w-10 h-10 rounded-xl flex items-center justify-center ${tone}`}
+      >
         <Icon size={20} strokeWidth={2.5} />
       </div>
     </div>
@@ -123,12 +131,18 @@ const ProgressStat = ({
 export default function LaporanPage() {
   const currentYear = new Date().getFullYear();
   const currentMonth = new Date().getMonth() + 1;
-  const years = Array.from({ length: currentYear - 2015 + 1 }, (_, i) => (currentYear - i).toString());
+  const years = Array.from({ length: currentYear - 2015 + 1 }, (_, i) =>
+    (currentYear - i).toString(),
+  );
 
   const [selectedMonth, setSelectedMonth] = useState(currentMonth);
   const [selectedYear, setSelectedYear] = useState(currentYear.toString());
   const [balitaList, setBalitaList] = useState<Balita[]>([]);
   const [absenList, setAbsenList] = useState<Absensi[]>([]);
+  const [pengukuranList, setPengukuranList] = useState<Pengukuran[]>([]);
+  const [loadState, setLoadState] = useState<"loading" | "success" | "error">(
+    "loading",
+  );
   const { success, error } = useToast();
   const selectedYearNumber = parseInt(selectedYear);
   const availableMonths =
@@ -136,22 +150,42 @@ export default function LaporanPage() {
   const selectedMonthName = months[selectedMonth - 1];
 
   useEffect(() => {
-    getBalitaList().then(setBalitaList).catch(console.error);
-  }, []);
+    let isActive = true;
 
-  useEffect(() => {
-    getAbsensiList(selectedMonth, selectedYearNumber).then(setAbsenList).catch(console.error);
+    Promise.resolve().then(() => {
+      if (isActive) setLoadState("loading");
+    });
+
+    Promise.all([
+      getBalitaList(),
+      getAbsensiList(selectedMonth, selectedYearNumber),
+      getPengukuranList(selectedMonth, selectedYearNumber),
+    ])
+      .then(([balitaData, absensiData, pengukuranData]) => {
+        if (!isActive) return;
+        setBalitaList(balitaData);
+        setAbsenList(absensiData);
+        setPengukuranList(pengukuranData);
+        setLoadState("success");
+      })
+      .catch((err) => {
+        console.error(err);
+        if (isActive) setLoadState("error");
+      });
+
+    return () => {
+      isActive = false;
+    };
   }, [selectedMonth, selectedYearNumber]);
 
   const totalBalita = balitaList.length;
-  const hadir = absenList.filter(a => a.isHadir).length;
+  const hadir = absenList.filter((a) => a.isHadir).length;
   const belumHadir = Math.max(totalBalita - hadir, 0);
+  const measuredBalitaIds = new Set(
+    pengukuranList.map((pengukuran) => pengukuran.balitaId).filter(Boolean),
+  );
   const sudahDiukur = balitaList.filter((balita) =>
-    balita.pengukuran?.some(
-      (pengukuran) =>
-        pengukuran.bulan === selectedMonth &&
-        pengukuran.tahun === selectedYearNumber,
-    ),
+    measuredBalitaIds.has(balita.id),
   ).length;
   const belumDiukur = Math.max(totalBalita - sudahDiukur, 0);
   const perempuan = balitaList.filter(
@@ -159,12 +193,10 @@ export default function LaporanPage() {
   ).length;
   const lakiLaki = Math.max(totalBalita - perempuan, 0);
   const totalPerluCek = balitaList.filter((balita) => {
-    const isHadir = absenList.find((absen) => absen.balitaId === balita.id)?.isHadir;
-    const isMeasured = balita.pengukuran?.some(
-      (pengukuran) =>
-        pengukuran.bulan === selectedMonth &&
-        pengukuran.tahun === selectedYearNumber,
-    );
+    const isHadir = absenList.find(
+      (absen) => absen.balitaId === balita.id,
+    )?.isHadir;
+    const isMeasured = measuredBalitaIds.has(balita.id);
 
     return !isHadir || !isMeasured;
   }).length;
@@ -177,14 +209,16 @@ export default function LaporanPage() {
       : 0;
   const followUpList = balitaList
     .map((balita) => {
-      const isHadir = absenList.find((absen) => absen.balitaId === balita.id)?.isHadir;
-      const isMeasured = balita.pengukuran?.some(
-        (pengukuran) =>
-          pengukuran.bulan === selectedMonth &&
-          pengukuran.tahun === selectedYearNumber,
-      );
+      const isHadir = absenList.find(
+        (absen) => absen.balitaId === balita.id,
+      )?.isHadir;
+      const isMeasured = measuredBalitaIds.has(balita.id);
 
-      return { balita, isHadir: Boolean(isHadir), isMeasured: Boolean(isMeasured) };
+      return {
+        balita,
+        isHadir: Boolean(isHadir),
+        isMeasured: Boolean(isMeasured),
+      };
     })
     .filter((item) => !item.isHadir || !item.isMeasured)
     .slice(0, 5);
@@ -196,12 +230,10 @@ export default function LaporanPage() {
       >
     >((acc, balita) => {
       const rt = String(balita.rt || "-");
-      const isHadir = absenList.find((absen) => absen.balitaId === balita.id)?.isHadir;
-      const isMeasured = balita.pengukuran?.some(
-        (pengukuran) =>
-          pengukuran.bulan === selectedMonth &&
-          pengukuran.tahun === selectedYearNumber,
-      );
+      const isHadir = absenList.find(
+        (absen) => absen.balitaId === balita.id,
+      )?.isHadir;
+      const isMeasured = measuredBalitaIds.has(balita.id);
 
       if (!acc[rt]) {
         acc[rt] = { rt, total: 0, hadir: 0, diukur: 0 };
@@ -235,10 +267,33 @@ export default function LaporanPage() {
     }
   };
 
+  if (loadState !== "success") {
+    return (
+      <div className="min-h-screen bg-gray-50 text-black font-sans pb-10">
+        <Navbar title="Laporan" />
+        <main className="p-4 sm:p-6 max-w-6xl mx-auto mt-2">
+          <PageStatusState
+            tone={loadState === "error" ? "error" : "loading"}
+            title={
+              loadState === "error"
+                ? "Laporan belum bisa dimuat"
+                : "Memuat laporan"
+            }
+            description={
+              loadState === "error"
+                ? "Terjadi gangguan saat mengambil data balita, absensi, atau pengukuran periode ini. Coba muat ulang halaman."
+                : "Mengambil data balita, absensi, dan pengukuran periode ini."
+            }
+          />
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 text-black font-sans pb-10">
       <Navbar title="Laporan" />
-      
+
       <main className="p-4 sm:p-6 max-w-6xl mx-auto space-y-6 mt-2">
         <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
           <div>
@@ -249,7 +304,8 @@ export default function LaporanPage() {
               Rekap {selectedMonthName} {selectedYear}
             </h1>
             <p className="text-xs font-medium text-gray-500 mt-1">
-              Pantau absensi, kelengkapan pengukuran, dan sasaran yang perlu ditindaklanjuti.
+              Pantau absensi, kelengkapan pengukuran, dan sasaran yang perlu
+              ditindaklanjuti.
             </p>
           </div>
 
@@ -272,7 +328,10 @@ export default function LaporanPage() {
               <div className="relative flex items-center mt-2">
                 <select
                   value={selectedMonth}
-                  onChange={(e) => setSelectedMonth(Number(e.target.value))}
+                  onChange={(e) => {
+                    setLoadState("loading");
+                    setSelectedMonth(Number(e.target.value));
+                  }}
                   className="w-full appearance-none bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 pr-10 text-sm font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-100 cursor-pointer"
                 >
                   {availableMonths.map((month, index) => (
@@ -281,7 +340,10 @@ export default function LaporanPage() {
                     </option>
                   ))}
                 </select>
-                <ChevronDown size={16} className="absolute right-4 text-gray-500 pointer-events-none" />
+                <ChevronDown
+                  size={16}
+                  className="absolute right-4 text-gray-500 pointer-events-none"
+                />
               </div>
             </div>
 
@@ -294,8 +356,12 @@ export default function LaporanPage() {
                   value={selectedYear}
                   onChange={(e) => {
                     const nextYear = Number(e.target.value);
+                    setLoadState("loading");
                     setSelectedYear(e.target.value);
-                    if (nextYear === currentYear && selectedMonth > currentMonth) {
+                    if (
+                      nextYear === currentYear &&
+                      selectedMonth > currentMonth
+                    ) {
                       setSelectedMonth(currentMonth);
                     }
                   }}
@@ -307,7 +373,10 @@ export default function LaporanPage() {
                     </option>
                   ))}
                 </select>
-                <ChevronDown size={16} className="absolute right-4 text-gray-500 pointer-events-none" />
+                <ChevronDown
+                  size={16}
+                  className="absolute right-4 text-gray-500 pointer-events-none"
+                />
               </div>
             </div>
 
@@ -433,8 +502,12 @@ export default function LaporanPage() {
                       >
                         <div>RT {item.rt}</div>
                         <div className="text-center">{item.total}</div>
-                        <div className="text-center text-emerald-600">{item.hadir}</div>
-                        <div className="text-center text-[#0d9488]">{item.diukur}</div>
+                        <div className="text-center text-emerald-600">
+                          {item.hadir}
+                        </div>
+                        <div className="text-center text-[#0d9488]">
+                          {item.diukur}
+                        </div>
                       </div>
                     ))
                   ) : (
@@ -543,7 +616,8 @@ export default function LaporanPage() {
                 {shortMonths[selectedMonth - 1]} {selectedYear}
               </p>
               <p className="text-xs font-medium text-blue-900 mt-2 leading-relaxed">
-                Data statistik mengikuti periode yang dipilih. File Excel tetap bisa diunduh walaupun data periode kosong.
+                Data statistik mengikuti periode yang dipilih. File Excel tetap
+                bisa diunduh walaupun data periode kosong.
               </p>
             </div>
           </div>

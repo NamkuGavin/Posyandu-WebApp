@@ -5,8 +5,8 @@ import { ArrowLeft, Baby, ChevronDown } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import Navbar from "@/components/layout/Navbar";
 import Card from "@/components/ui/Card";
-import { InfoPanel } from "@/components/ui/PageParts";
-import { getBalitaById, addPengukuran } from "@/lib/api";
+import { InfoPanel, PageStatusState } from "@/components/ui/PageParts";
+import { getBalitaById, addPengukuran, getPengukuranList } from "@/lib/api";
 import { Balita, Pengukuran } from "@/types";
 
 function calculateAgeInMonths(birthDate: string): number {
@@ -18,43 +18,47 @@ function calculateAgeInMonths(birthDate: string): number {
 }
 import { useToast } from "@/components/ui/Toast";
 
-const InputWithSuffix = ({ 
-  label, 
-  suffix, 
-  value, 
-  onChange, 
+const InputWithSuffix = ({
+  label,
+  suffix,
+  value,
+  onChange,
   sublabel = "",
   disabled = false,
-  placeholder = "0.0"
-}: { 
-  label: string, 
-  suffix: string, 
-  value: string, 
-  onChange: (val: string) => void, 
-  sublabel?: string,
-  disabled?: boolean,
-  placeholder?: string
+  placeholder = "0.0",
+}: {
+  label: string;
+  suffix: string;
+  value: string;
+  onChange: (val: string) => void;
+  sublabel?: string;
+  disabled?: boolean;
+  placeholder?: string;
 }) => (
   <div className="space-y-1">
     <div className="flex justify-between items-end">
       <label className="text-xs font-bold text-black">{label}</label>
       {sublabel && <span className="text-[9px] text-gray-400">{sublabel}</span>}
     </div>
-    <div className={`relative flex rounded-xl border overflow-hidden transition-all shadow-sm ${
-      disabled 
-        ? "border-gray-100 bg-gray-50" 
-        : "border-gray-200 focus-within:ring-2 focus-within:ring-teal-500/20 focus-within:border-teal-500 bg-white"
-    }`}>
-      <input 
-        type="number" 
+    <div
+      className={`relative flex rounded-xl border overflow-hidden transition-all shadow-sm ${
+        disabled
+          ? "border-gray-100 bg-gray-50"
+          : "border-gray-200 focus-within:ring-2 focus-within:ring-teal-500/20 focus-within:border-teal-500 bg-white"
+      }`}
+    >
+      <input
+        type="number"
         step="any"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         disabled={disabled}
-        className="w-full p-3.5 pr-12 text-sm text-black font-bold outline-none bg-transparent placeholder:text-gray-300 disabled:text-gray-400 disabled:cursor-not-allowed" 
+        className="w-full p-3.5 pr-12 text-sm text-black font-bold outline-none bg-transparent placeholder:text-gray-300 disabled:text-gray-400 disabled:cursor-not-allowed"
       />
-      <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-gray-400">{suffix}</span>
+      <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-gray-400">
+        {suffix}
+      </span>
     </div>
   </div>
 );
@@ -64,6 +68,15 @@ export default function UkurBalitaPage() {
   const router = useRouter();
   const id = params.id as string;
   const [balita, setBalita] = useState<Balita | null>(null);
+  const [measurementByMonth, setMeasurementByMonth] = useState<
+    Record<number, Pengukuran | null>
+  >({});
+  const [loadState, setLoadState] = useState<"loading" | "success" | "error">(
+    "loading",
+  );
+  const [measurementLoadState, setMeasurementLoadState] = useState<
+    "loading" | "success" | "error"
+  >("loading");
   const { success, warning } = useToast();
   const [ageInMonths, setAgeInMonths] = useState<number | null>(null);
 
@@ -72,7 +85,20 @@ export default function UkurBalitaPage() {
   const [berat, setBerat] = useState("");
   const [lingkarKepala, setLingkarKepala] = useState("");
   const [lingkarLengan, setLingkarLengan] = useState("");
-  const monthNames = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+  const monthNames = [
+    "Januari",
+    "Februari",
+    "Maret",
+    "April",
+    "Mei",
+    "Juni",
+    "Juli",
+    "Agustus",
+    "September",
+    "Oktober",
+    "November",
+    "Desember",
+  ];
   const currentDate = new Date();
   const currentMonth = currentDate.getMonth() + 1;
   const currentYear = currentDate.getFullYear();
@@ -80,20 +106,93 @@ export default function UkurBalitaPage() {
   const [selectedMonth, setSelectedMonth] = useState(currentMonth);
   const [isMeasuredDialogOpen, setIsMeasuredDialogOpen] = useState(false);
 
-  const selectedMeasurement = balita?.pengukuran?.find(
-    (p) => p.bulan === selectedMonth && p.tahun === currentYear
-  );
+  const selectedMeasurement = measurementByMonth[selectedMonth];
+  const isMeasurementStatusLoaded =
+    measurementLoadState === "success" && selectedMonth in measurementByMonth;
   const selectedMonthName = monthNames[selectedMonth - 1];
   const isMeasurementLocked = Boolean(selectedMeasurement);
 
   useEffect(() => {
-    getBalitaById(id).then((found) => {
-      setBalita(found);
-      if (found?.tglLahir) {
-        setAgeInMonths(calculateAgeInMonths(found.tglLahir));
-      }
+    let isActive = true;
+
+    Promise.resolve().then(() => {
+      if (isActive) setLoadState("loading");
     });
+
+    getBalitaById(id)
+      .then((found) => {
+        if (!isActive) return;
+        if (!found) {
+          setLoadState("error");
+          return;
+        }
+
+        setBalita(found);
+        if (found.tglLahir) {
+          setAgeInMonths(calculateAgeInMonths(found.tglLahir));
+        }
+        setLoadState("success");
+      })
+      .catch((err) => {
+        console.error(err);
+        if (isActive) setLoadState("error");
+      });
+
+    return () => {
+      isActive = false;
+    };
   }, [id]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    Promise.resolve().then(() => {
+      if (!isActive) return;
+      setMeasurementByMonth({});
+      setMeasurementLoadState("loading");
+    });
+
+    return () => {
+      isActive = false;
+    };
+  }, [id]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    if (selectedMonth in measurementByMonth) {
+      Promise.resolve().then(() => {
+        if (isActive) setMeasurementLoadState("success");
+      });
+      return () => {
+        isActive = false;
+      };
+    }
+
+    Promise.resolve().then(() => {
+      if (isActive) setMeasurementLoadState("loading");
+    });
+
+    getPengukuranList(selectedMonth, currentYear)
+      .then((list) => {
+        if (!isActive) return;
+        const measurement =
+          list.find((pengukuran) => pengukuran.balitaId === id) ?? null;
+        setMeasurementByMonth((prev) => ({
+          ...prev,
+          [selectedMonth]: measurement,
+        }));
+        setMeasurementLoadState("success");
+      })
+      .catch((err) => {
+        console.error(err);
+        if (isActive) setMeasurementLoadState("error");
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [currentYear, id, measurementByMonth, selectedMonth]);
 
   // Clean lingkarLengan if child is 6 months or under
   useEffect(() => {
@@ -108,13 +207,48 @@ export default function UkurBalitaPage() {
     }
   }, [selectedMeasurement, selectedMonth]);
 
-  if (!balita) {
+  if (loadState !== "success" || !balita || balita.id !== id) {
     return (
-      <div className="min-h-screen bg-gray-50 text-black font-sans flex items-center justify-center">
-        <div className="text-center space-y-2">
-          <div className="w-8 h-8 border-4 border-teal-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
-          <p className="text-xs font-semibold text-gray-500">Memuat data balita...</p>
-        </div>
+      <div className="min-h-screen bg-gray-50 text-black font-sans pb-10">
+        <Navbar title="Input Pengukuran" />
+        <main className="p-4 sm:p-6 max-w-2xl mx-auto mt-2">
+          <PageStatusState
+            tone={loadState === "error" ? "error" : "loading"}
+            title={
+              loadState === "error"
+                ? "Data balita belum bisa dimuat"
+                : "Memuat data balita"
+            }
+            description={
+              loadState === "error"
+                ? "Terjadi gangguan saat mengambil data balita. Coba muat ulang halaman."
+                : "Mengambil data balita sebelum membuka form pengukuran."
+            }
+          />
+        </main>
+      </div>
+    );
+  }
+
+  if (!isMeasurementStatusLoaded) {
+    return (
+      <div className="min-h-screen bg-gray-50 text-black font-sans pb-10">
+        <Navbar title="Input Pengukuran" />
+        <main className="p-4 sm:p-6 max-w-2xl mx-auto mt-2">
+          <PageStatusState
+            tone={measurementLoadState === "error" ? "error" : "loading"}
+            title={
+              measurementLoadState === "error"
+                ? "Status pengukuran belum bisa dicek"
+                : "Mengecek status pengukuran"
+            }
+            description={
+              measurementLoadState === "error"
+                ? "Terjadi gangguan saat mengambil data pengukuran periode ini. Coba muat ulang halaman."
+                : `Mengambil status pengukuran ${selectedMonthName} ${currentYear}.`
+            }
+          />
+        </main>
       </div>
     );
   }
@@ -122,27 +256,41 @@ export default function UkurBalitaPage() {
   const handleSave = async () => {
     const isOver6Months = ageInMonths !== null && ageInMonths > 6;
 
+    if (!isMeasurementStatusLoaded) {
+      warning("Status pengukuran periode ini masih dicek. Coba lagi sebentar.");
+      return;
+    }
+
     if (isMeasurementLocked) {
       setIsMeasuredDialogOpen(true);
       return;
     }
-    
-    if (!tinggi || !berat || !lingkarKepala || (isOver6Months && !lingkarLengan)) {
-      warning(isOver6Months ? "Harap isi semua data pengukuran!" : "Harap isi data panjang, berat, dan lingkar kepala!");
+
+    if (
+      !tinggi ||
+      !berat ||
+      !lingkarKepala ||
+      (isOver6Months && !lingkarLengan)
+    ) {
+      warning(
+        isOver6Months
+          ? "Harap isi semua data pengukuran!"
+          : "Harap isi data panjang, berat, dan lingkar kepala!",
+      );
       return;
     }
 
-    const newMeasurement: Omit<Pengukuran, 'id'> = {
+    const newMeasurement: Omit<Pengukuran, "id"> = {
       bulan: selectedMonth,
       tahun: currentYear,
       beratBadan: parseFloat(berat),
       tinggiBadan: parseFloat(tinggi),
       lingkarKepala: lingkarKepala ? parseFloat(lingkarKepala) : null,
-      lingkarLengan: lingkarLengan ? parseFloat(lingkarLengan) : null
+      lingkarLengan: lingkarLengan ? parseFloat(lingkarLengan) : null,
     };
 
     await addPengukuran(id, newMeasurement);
-    success('Pengukuran berhasil disimpan!');
+    success("Pengukuran berhasil disimpan!");
     router.push(`/dashboard/balita/${id}`);
   };
 
@@ -151,29 +299,44 @@ export default function UkurBalitaPage() {
   return (
     <div className="min-h-screen bg-gray-50 text-black font-sans pb-10">
       <Navbar title="Input Pengukuran" />
-      
+
       <main className="p-4 sm:p-6 max-w-2xl mx-auto space-y-6 mt-2">
         <div className="flex items-center justify-between relative h-10">
-          <button onClick={() => router.back()} className="w-10 h-10 rounded-full border border-gray-200 flex items-center justify-center hover:bg-gray-100 transition-colors bg-white shadow-sm z-10 active:scale-95">
+          <button
+            onClick={() => router.back()}
+            className="w-10 h-10 rounded-full border border-gray-200 flex items-center justify-center hover:bg-gray-100 transition-colors bg-white shadow-sm z-10 active:scale-95"
+          >
             <ArrowLeft size={20} className="text-black" />
           </button>
-          <h1 className="text-lg font-bold text-black absolute left-1/2 -translate-x-1/2 w-full text-center pointer-events-none">Input Pengukuran</h1>
+          <h1 className="text-lg font-bold text-black absolute left-1/2 -translate-x-1/2 w-full text-center pointer-events-none">
+            Input Pengukuran
+          </h1>
         </div>
 
         <InfoPanel title="Cara mengisi pengukuran">
-          Pilih bulan pengukuran, lalu isi angka sesuai hasil ukur. Jika bulan sudah pernah diukur, field dikunci dan perubahan dilakukan melalui Edit Data Balita.
+          Pilih bulan pengukuran, lalu isi angka sesuai hasil ukur. Jika bulan
+          sudah pernah diukur, field dikunci dan perubahan dilakukan melalui
+          Edit Data Balita.
         </InfoPanel>
 
         <Card className="p-5 bg-white border border-gray-100 shadow-sm rounded-xl flex items-center gap-4">
-          <div className={`w-12 h-12 rounded-full flex items-center justify-center shrink-0 ${
-            balita.jenisKelamin === "PEREMPUAN" ? "bg-[#fce5f1] text-pink-500" : "bg-[#e5f5fd] text-sky-500"
-          }`}>
+          <div
+            className={`w-12 h-12 rounded-full flex items-center justify-center shrink-0 ${
+              balita.jenisKelamin === "PEREMPUAN"
+                ? "bg-[#fce5f1] text-pink-500"
+                : "bg-[#e5f5fd] text-sky-500"
+            }`}
+          >
             <Baby size={24} />
           </div>
           <div>
             <h5 className="text-sm font-bold text-black">{balita.nama}</h5>
-            <p className="text-xs text-gray-700 mt-1">{balita.jenisKelamin === "PEREMPUAN" ? "Perempuan" : "Laki-laki"}</p>
-            <p className="text-xs text-gray-700 mt-0.5">{balita.namaWali} • {balita.alamat} RT {balita.rt}/RW {balita.rw}</p>
+            <p className="text-xs text-gray-700 mt-1">
+              {balita.jenisKelamin === "PEREMPUAN" ? "Perempuan" : "Laki-laki"}
+            </p>
+            <p className="text-xs text-gray-700 mt-0.5">
+              {balita.namaWali} • {balita.alamat} RT {balita.rt}/RW {balita.rw}
+            </p>
           </div>
         </Card>
 
@@ -187,9 +350,7 @@ export default function UkurBalitaPage() {
               onChange={(e) => {
                 const month = Number(e.target.value);
                 setSelectedMonth(month);
-                const alreadyMeasured = balita.pengukuran?.some(
-                  (p) => p.bulan === month && p.tahun === currentYear
-                );
+                const alreadyMeasured = measurementByMonth[month];
                 if (alreadyMeasured) {
                   setIsMeasuredDialogOpen(true);
                 }
@@ -198,55 +359,84 @@ export default function UkurBalitaPage() {
             >
               {monthOptions.map((month, index) => {
                 const monthNumber = index + 1;
-                const isMeasured = balita.pengukuran?.some(
-                  (p) => p.bulan === monthNumber && p.tahun === currentYear
-                );
+                const isStatusLoaded = monthNumber in measurementByMonth;
+                const isMeasured = Boolean(measurementByMonth[monthNumber]);
 
                 return (
                   <option key={month} value={monthNumber}>
-                    {month} {currentYear} - {isMeasured ? "Sudah diukur" : "Belum diukur"}
+                    {month} {currentYear}
+                    {isStatusLoaded
+                      ? ` - ${isMeasured ? "Sudah diukur" : "Belum diukur"}`
+                      : ""}
                   </option>
                 );
               })}
             </select>
-            <ChevronDown size={18} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
+            <ChevronDown
+              size={18}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none"
+            />
           </div>
           <p className="text-xs font-medium leading-relaxed text-gray-600">
-            Pilih bulan pengukuran pada tahun berjalan. Jika bulan sudah diukur, ubah datanya lewat Edit Data Balita.
+            Pilih bulan pengukuran pada tahun berjalan. Jika bulan sudah diukur,
+            ubah datanya lewat Edit Data Balita.
           </p>
           {selectedMeasurement && (
             <p className="text-xs font-bold text-orange-600">
-              {selectedMonthName} {currentYear} sudah memiliki data pengukuran. Semua field dikunci, gunakan Edit Data Balita untuk mengubahnya.
+              {selectedMonthName} {currentYear} sudah memiliki data pengukuran.
+              Semua field dikunci, gunakan Edit Data Balita untuk mengubahnya.
             </p>
           )}
         </div>
 
         <div className="space-y-4 pt-2">
-          <p className="text-xs font-bold text-gray-500 ml-1">Data Pengukuran</p>
-          <InputWithSuffix label="Panjang / Tinggi" suffix="cm" value={tinggi} onChange={setTinggi} disabled={isMeasurementLocked} />
-          <InputWithSuffix label="Berat" suffix="kg" value={berat} onChange={setBerat} disabled={isMeasurementLocked} />
-          <InputWithSuffix label="Lingkar Kepala" suffix="cm" value={lingkarKepala} onChange={setLingkarKepala} disabled={isMeasurementLocked} />
-          <InputWithSuffix 
-            label="Lingkar Lengan Atas" 
-            suffix="cm" 
-            value={lingkarLengan} 
-            onChange={setLingkarLengan} 
-            sublabel="Untuk balita usia > 6 bulan" 
+          <p className="text-xs font-bold text-gray-500 ml-1">
+            Data Pengukuran
+          </p>
+          <InputWithSuffix
+            label="Panjang / Tinggi"
+            suffix="cm"
+            value={tinggi}
+            onChange={setTinggi}
+            disabled={isMeasurementLocked}
+          />
+          <InputWithSuffix
+            label="Berat"
+            suffix="kg"
+            value={berat}
+            onChange={setBerat}
+            disabled={isMeasurementLocked}
+          />
+          <InputWithSuffix
+            label="Lingkar Kepala"
+            suffix="cm"
+            value={lingkarKepala}
+            onChange={setLingkarKepala}
+            disabled={isMeasurementLocked}
+          />
+          <InputWithSuffix
+            label="Lingkar Lengan Atas"
+            suffix="cm"
+            value={lingkarLengan}
+            onChange={setLingkarLengan}
+            sublabel="Untuk balita usia > 6 bulan"
             disabled={isLlaDisabled || isMeasurementLocked}
             placeholder={isLlaDisabled ? "Tidak wajib (≤ 6 bulan)" : "0.0"}
           />
         </div>
 
-        <button 
+        <button
           onClick={handleSave}
-          disabled={Boolean(selectedMeasurement)}
+          disabled={!isMeasurementStatusLoaded || Boolean(selectedMeasurement)}
           className={`w-full font-bold py-4 rounded-xl transition-colors active:scale-95 shadow-md mt-6 ${
-            selectedMeasurement
+            !isMeasurementStatusLoaded || selectedMeasurement
               ? "bg-gray-200 text-gray-400 cursor-not-allowed shadow-none"
               : "bg-[#1fb999] hover:bg-teal-600 text-white shadow-teal-100 cursor-pointer"
           }`}
         >
-          Simpan Pengukuran
+          {isMeasurementStatusLoaded
+            ? "Simpan Pengukuran"
+            : "Mengecek Status..."}
         </button>
       </main>
 
@@ -260,7 +450,9 @@ export default function UkurBalitaPage() {
               Pengukuran Sudah Ada
             </h3>
             <p className="text-xs text-gray-600 leading-relaxed mb-6">
-              Balita ini sudah diukur pada {selectedMonthName} {currentYear}. Jika ingin mengubah data pengukuran, gunakan fitur Edit Data Balita.
+              Balita ini sudah diukur pada {selectedMonthName} {currentYear}.
+              Jika ingin mengubah data pengukuran, gunakan fitur Edit Data
+              Balita.
             </p>
             <div className="flex gap-3">
               <button

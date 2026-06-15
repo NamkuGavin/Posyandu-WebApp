@@ -20,8 +20,9 @@ import {
 import { useRouter } from "next/navigation";
 import Navbar from "@/components/layout/Navbar";
 import Card from "@/components/ui/Card";
-import { getBalitaList, getDashboardStats } from "@/lib/api";
-import { Balita, BerandaStats } from "@/types";
+import { PageStatusState } from "@/components/ui/PageParts";
+import { getBalitaList, getDashboardStats, getPengukuranList } from "@/lib/api";
+import { Balita, BerandaStats, Pengukuran } from "@/types";
 
 const formatPercent = (value: number) => {
   if (!Number.isFinite(value)) return "0";
@@ -50,7 +51,9 @@ function SummaryCard({
           </p>
           <p className="text-2xl font-black text-gray-950 mt-2">{value}</p>
         </div>
-        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${tone}`}>
+        <div
+          className={`w-10 h-10 rounded-xl flex items-center justify-center ${tone}`}
+        >
           <Icon size={20} strokeWidth={2.5} />
         </div>
       </div>
@@ -98,17 +101,54 @@ export default function DashboardPage() {
   const [isFocused, setIsFocused] = useState(false);
   const [balitaList, setBalitaList] = useState<Balita[]>([]);
   const [stats, setStats] = useState<BerandaStats | null>(null);
+  const [currentPengukuran, setCurrentPengukuran] = useState<Pengukuran[]>([]);
+  const [loadState, setLoadState] = useState<"loading" | "success" | "error">(
+    "loading",
+  );
   const router = useRouter();
   const searchRef = useRef<HTMLDivElement>(null);
+  const currentMonth = new Date().getMonth() + 1;
+  const currentYear = new Date().getFullYear();
+  const currentPeriod = new Date().toLocaleDateString("id-ID", {
+    month: "long",
+    year: "numeric",
+  });
 
   useEffect(() => {
-    getBalitaList().then(setBalitaList).catch(console.error);
-    getDashboardStats().then(setStats).catch(console.error);
-  }, []);
+    let isActive = true;
+
+    Promise.resolve().then(() => {
+      if (isActive) setLoadState("loading");
+    });
+
+    Promise.all([
+      getBalitaList(),
+      getDashboardStats(),
+      getPengukuranList(currentMonth, currentYear),
+    ])
+      .then(([balitaData, dashboardStats, pengukuranData]) => {
+        if (!isActive) return;
+        setBalitaList(balitaData);
+        setStats(dashboardStats);
+        setCurrentPengukuran(pengukuranData);
+        setLoadState("success");
+      })
+      .catch((err) => {
+        console.error(err);
+        if (isActive) setLoadState("error");
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [currentMonth, currentYear]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
+      if (
+        searchRef.current &&
+        !searchRef.current.contains(event.target as Node)
+      ) {
         setIsFocused(false);
       }
     }
@@ -117,12 +157,9 @@ export default function DashboardPage() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const currentMonth = new Date().getMonth() + 1;
-  const currentYear = new Date().getFullYear();
-  const currentPeriod = new Date().toLocaleDateString("id-ID", {
-    month: "long",
-    year: "numeric",
-  });
+  const measuredBalitaIds = new Set(
+    currentPengukuran.map((pengukuran) => pengukuran.balitaId).filter(Boolean),
+  );
 
   const filteredSuggestions = balitaList
     .filter((balita) =>
@@ -131,10 +168,7 @@ export default function DashboardPage() {
     .slice(0, 4);
 
   const belumDiukurList = balitaList.filter((balita) => {
-    const isMeasured = balita.pengukuran?.some(
-      (pengukuran) =>
-        pengukuran.bulan === currentMonth && pengukuran.tahun === currentYear,
-    );
+    const isMeasured = measuredBalitaIds.has(balita.id);
     return !isMeasured;
   });
 
@@ -142,7 +176,7 @@ export default function DashboardPage() {
   const hadirBulanIni = stats?.hadirBulanIni ?? 0;
   const belumHadir =
     stats?.belumHadir ?? Math.max(totalBalita - hadirBulanIni, 0);
-  const belumDiukur = stats?.belumDiukur ?? belumDiukurList.length;
+  const belumDiukur = belumDiukurList.length;
   const sudahDiukur = Math.max(totalBalita - belumDiukur, 0);
   const attendanceRate =
     totalBalita > 0
@@ -174,6 +208,29 @@ export default function DashboardPage() {
     },
   ];
 
+  if (loadState !== "success") {
+    return (
+      <div className="min-h-screen bg-gray-50 font-sans text-black pb-10">
+        <Navbar />
+        <main className="p-4 sm:p-6 md:p-8 max-w-6xl mx-auto mt-2">
+          <PageStatusState
+            tone={loadState === "error" ? "error" : "loading"}
+            title={
+              loadState === "error"
+                ? "Data dashboard belum bisa dimuat"
+                : "Memuat data dashboard"
+            }
+            description={
+              loadState === "error"
+                ? "Terjadi gangguan saat mengambil data balita, statistik, atau pengukuran bulan ini. Coba muat ulang halaman."
+                : "Mengambil data balita, statistik, dan status pengukuran bulan ini"
+            }
+          />
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 font-sans text-black pb-10">
       <Navbar />
@@ -189,7 +246,8 @@ export default function DashboardPage() {
                 Pemantauan Bulan Ini
               </h1>
               <p className="text-sm sm:text-base font-medium text-teal-50 mt-2 max-w-xl leading-relaxed">
-                Mulai dari cari balita, input pengukuran, absen bulanan, sampai lihat laporan.
+                Mulai dari cari balita, input pengukuran, absen bulanan, sampai
+                lihat laporan.
               </p>
             </div>
             <div className="bg-white/15 px-3 py-2 rounded-xl flex items-center gap-2 text-xs font-bold tracking-wide whitespace-nowrap self-start">
@@ -389,7 +447,9 @@ export default function DashboardPage() {
                 priorityList.map((item) => (
                   <Card
                     key={item.id}
-                    onClick={() => router.push(`/dashboard/balita/${item.id}/ukur`)}
+                    onClick={() =>
+                      router.push(`/dashboard/balita/${item.id}/ukur`)
+                    }
                     className="p-4 rounded-xl flex items-center justify-between group cursor-pointer hover:border-teal-200 hover:shadow-md hover:shadow-teal-50 transition-all shadow-sm bg-white"
                   >
                     <div className="flex items-center gap-3 min-w-0">

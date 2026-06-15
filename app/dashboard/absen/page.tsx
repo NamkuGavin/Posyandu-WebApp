@@ -11,7 +11,12 @@ import {
 } from "lucide-react";
 import Navbar from "@/components/layout/Navbar";
 import Card from "@/components/ui/Card";
-import { EmptyState, InfoPanel, PageHeader } from "@/components/ui/PageParts";
+import {
+  EmptyState,
+  InfoPanel,
+  PageHeader,
+  PageStatusState,
+} from "@/components/ui/PageParts";
 import { getBalitaList, getAbsensiList, bulkUpdateAbsensi } from "@/lib/api";
 import { Absensi, Balita } from "@/types";
 
@@ -35,6 +40,9 @@ export default function AbsenBalitaPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [balitaList, setBalitaList] = useState<Balita[]>([]);
   const [absenData, setAbsenData] = useState<Absensi[]>([]);
+  const [loadState, setLoadState] = useState<"loading" | "success" | "error">(
+    "loading",
+  );
   const currentMonth = new Date().getMonth() + 1;
   const currentYear = new Date().getFullYear();
   const monthOptions = months.slice(0, currentMonth);
@@ -42,13 +50,27 @@ export default function AbsenBalitaPage() {
   const selectedMonthName = months[selectedMonth - 1];
 
   useEffect(() => {
-    getBalitaList().then(setBalitaList).catch(console.error);
-  }, []);
+    let isActive = true;
 
-  useEffect(() => {
-    getAbsensiList(selectedMonth, currentYear)
-      .then(setAbsenData)
-      .catch(console.error);
+    Promise.resolve().then(() => {
+      if (isActive) setLoadState("loading");
+    });
+
+    Promise.all([getBalitaList(), getAbsensiList(selectedMonth, currentYear)])
+      .then(([balitaData, absensiData]) => {
+        if (!isActive) return;
+        setBalitaList(balitaData);
+        setAbsenData(absensiData);
+        setLoadState("success");
+      })
+      .catch((err) => {
+        console.error(err);
+        if (isActive) setLoadState("error");
+      });
+
+    return () => {
+      isActive = false;
+    };
   }, [selectedMonth, currentYear]);
 
   const handleStatusChange = async (
@@ -91,6 +113,29 @@ export default function AbsenBalitaPage() {
     if (filter === "Belum hadir" && currentStatus !== "tidak") return false;
     return item.nama.toLowerCase().includes(searchTerm.toLowerCase());
   });
+
+  if (loadState !== "success") {
+    return (
+      <div className="min-h-screen bg-gray-50 text-black font-sans pb-10">
+        <Navbar title="Absen Balita" />
+        <main className="p-4 sm:p-6 max-w-6xl mx-auto mt-2">
+          <PageStatusState
+            tone={loadState === "error" ? "error" : "loading"}
+            title={
+              loadState === "error"
+                ? "Data absensi belum bisa dimuat"
+                : "Memuat data absensi"
+            }
+            description={
+              loadState === "error"
+                ? "Terjadi gangguan saat mengambil data balita atau absensi periode ini. Coba muat ulang halaman."
+                : "Mengambil data balita dan absensi periode ini."
+            }
+          />
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 text-black font-sans pb-10">
@@ -153,7 +198,10 @@ export default function AbsenBalitaPage() {
               <div className="relative mt-2">
                 <select
                   value={selectedMonth}
-                  onChange={(e) => setSelectedMonth(Number(e.target.value))}
+                  onChange={(e) => {
+                    setLoadState("loading");
+                    setSelectedMonth(Number(e.target.value));
+                  }}
                   className="w-full appearance-none bg-white border border-gray-200 rounded-xl p-3.5 pr-10 text-base font-bold text-black focus:outline-none focus:ring-2 focus:ring-teal-100 shadow-sm cursor-pointer"
                 >
                   {monthOptions.map((month, index) => (
@@ -189,7 +237,8 @@ export default function AbsenBalitaPage() {
         </Card>
 
         <InfoPanel title="Petunjuk absensi">
-          Gunakan tombol Hadir bila balita datang ke posyandu. Gunakan Tidak bila belum hadir pada periode yang dipilih.
+          Gunakan tombol Hadir bila balita datang ke posyandu. Gunakan Tidak
+          bila belum hadir pada periode yang dipilih.
         </InfoPanel>
 
         <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-hide">
