@@ -3,8 +3,11 @@ import {
   Pengukuran,
   Absensi,
   BerandaStats,
+  CreateKaderPayload,
   KaderProfile,
+  UpdateKaderPayload,
 } from "@/types";
+import { isAdminProfile } from "@/lib/roles";
 
 type RawPengukuran = Record<string, unknown> & {
   id?: string;
@@ -89,6 +92,31 @@ function normalizePengukuran(
 
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
+}
+
+async function getApiError(res: Response, fallback: string) {
+  const data = await res.json().catch(() => null);
+  const message = data?.message;
+
+  if (Array.isArray(message)) {
+    return message.join(", ");
+  }
+
+  if (typeof message === "string") {
+    return message;
+  }
+
+  return fallback;
+}
+
+async function assertOperationalWriteAccess() {
+  const profile = await getCurrentUser();
+
+  if (isAdminProfile(profile)) {
+    throw new Error(
+      "Akun admin hanya memiliki akses baca untuk data operasional kader.",
+    );
+  }
 }
 
 // Client-side cookie utilities
@@ -180,6 +208,56 @@ export async function getCurrentUser(): Promise<KaderProfile> {
   return data as KaderProfile;
 }
 
+// Users / Kader
+export async function getKaderList(): Promise<KaderProfile[]> {
+  const res = await authFetch("/users");
+  if (!res.ok) throw new Error("Gagal mengambil daftar kader");
+
+  const data = await res.json();
+  return Array.isArray(data) ? data : [];
+}
+
+export async function createKader(
+  payload: CreateKaderPayload,
+): Promise<KaderProfile> {
+  const res = await authFetch("/users", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    throw new Error(await getApiError(res, "Gagal membuat akun kader"));
+  }
+
+  return res.json();
+}
+
+export async function updateKader(
+  id: string,
+  payload: UpdateKaderPayload,
+): Promise<KaderProfile> {
+  const res = await authFetch(`/users/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    throw new Error(await getApiError(res, "Gagal memperbarui akun kader"));
+  }
+
+  return res.json();
+}
+
+export async function deleteKader(id: string): Promise<void> {
+  const res = await authFetch(`/users/${id}`, {
+    method: "DELETE",
+  });
+
+  if (!res.ok) {
+    throw new Error(await getApiError(res, "Gagal menghapus akun kader"));
+  }
+}
+
 // Dashboard
 export async function getDashboardStats(): Promise<BerandaStats> {
   const res = await authFetch("/beranda");
@@ -206,13 +284,14 @@ export async function getBalitaById(id: string): Promise<Balita | null> {
 export async function createBalita(
   balita: Record<string, unknown>,
 ): Promise<Balita> {
+  await assertOperationalWriteAccess();
+
   const res = await authFetch("/balita", {
     method: "POST",
     body: JSON.stringify(balita),
   });
   if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.message || "Gagal menambah balita");
+    throw new Error(await getApiError(res, "Gagal menambah balita"));
   }
   return res.json();
 }
@@ -221,13 +300,14 @@ export async function updateBalita(
   id: string,
   updatedFields: Partial<Balita>,
 ): Promise<void> {
+  await assertOperationalWriteAccess();
+
   const res = await authFetch(`/balita/${id}`, {
     method: "PATCH",
     body: JSON.stringify(updatedFields),
   });
   if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.message || "Gagal update balita");
+    throw new Error(await getApiError(res, "Gagal update balita"));
   }
 }
 
@@ -244,24 +324,26 @@ export async function updatePengukuranBalita(
   pengukuranId: string,
   updatedFields: UpdatePengukuranBalitaPayload,
 ): Promise<void> {
+  await assertOperationalWriteAccess();
+
   const res = await authFetch(`/pengukuran/${pengukuranId}`, {
     method: "PATCH",
     body: JSON.stringify(updatedFields),
   });
   if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.message || "Gagal update pengukuran balita");
+    throw new Error(await getApiError(res, "Gagal update pengukuran balita"));
   }
 }
 
 export async function deleteBalita(id: string, alasan: string): Promise<void> {
+  await assertOperationalWriteAccess();
+
   const res = await authFetch(`/balita/${id}`, {
     method: "DELETE",
     body: JSON.stringify({ alasan }),
   });
   if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.message || "Gagal menghapus balita");
+    throw new Error(await getApiError(res, "Gagal menghapus balita"));
   }
 }
 
@@ -270,6 +352,8 @@ export async function addPengukuran(
   id: string,
   pengukuran: Partial<Pengukuran>,
 ): Promise<void> {
+  await assertOperationalWriteAccess();
+
   const { lingkarLengan, ...rest } = pengukuran;
   const payload = {
     balitaId: id,
@@ -281,8 +365,7 @@ export async function addPengukuran(
     body: JSON.stringify(payload),
   });
   if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.message || "Gagal menambah pengukuran");
+    throw new Error(await getApiError(res, "Gagal menambah pengukuran"));
   }
 }
 
@@ -326,6 +409,8 @@ export async function bulkUpdateAbsensi(
   }[],
 ): Promise<void> {
   if (absensiUpdates.length === 0) return;
+  await assertOperationalWriteAccess();
+
   const first = absensiUpdates[0];
   const payload = {
     bulan: first.bulan,
@@ -340,8 +425,7 @@ export async function bulkUpdateAbsensi(
     body: JSON.stringify(payload),
   });
   if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.message || "Gagal update absensi");
+    throw new Error(await getApiError(res, "Gagal update absensi"));
   }
 }
 

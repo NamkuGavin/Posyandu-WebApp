@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { ArrowLeft, Baby, ChevronDown } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import Navbar from "@/components/layout/Navbar";
@@ -12,6 +12,7 @@ import {
   updatePengukuranBalita,
   getPengukuranList,
 } from "@/lib/api";
+import { useCurrentProfile } from "@/lib/useCurrentProfile";
 import { Balita, Pengukuran } from "@/types";
 import { useToast } from "@/components/ui/Toast";
 
@@ -29,6 +30,11 @@ const MONTH_NAMES = [
   "November",
   "Desember",
 ];
+const NIK_LENGTH = 16;
+
+function onlyDigits(value: string, maxLength: number) {
+  return value.replace(/\D/g, "").slice(0, maxLength);
+}
 
 function toOptionalNumber(value: string): number | null {
   const trimmed = value.trim();
@@ -55,6 +61,74 @@ function calculateAgeInMonths(birthDateString: string): number | null {
   }
 
   return Math.max(months, 0);
+}
+
+type MeasurementPeriod = {
+  month: number;
+  year: number;
+};
+
+type MeasurementMonthOption = {
+  label: string;
+  value: number;
+};
+
+function getBirthPeriod(dateString?: string | null): MeasurementPeriod | null {
+  if (!dateString) return null;
+
+  const date = new Date(dateString);
+  if (Number.isNaN(date.getTime())) return null;
+
+  return {
+    month: date.getUTCMonth() + 1,
+    year: date.getUTCFullYear(),
+  };
+}
+
+function getMeasurementYearOptions(
+  birthPeriod: MeasurementPeriod | null,
+  currentYear: number,
+) {
+  if (!birthPeriod || birthPeriod.year > currentYear) return [];
+
+  const years = [];
+  for (let year = currentYear; year >= birthPeriod.year; year -= 1) {
+    years.push(year);
+  }
+
+  return years;
+}
+
+function getMeasurementMonthOptions(
+  year: number,
+  birthPeriod: MeasurementPeriod | null,
+  currentMonth: number,
+  currentYear: number,
+): MeasurementMonthOption[] {
+  if (!birthPeriod || year < birthPeriod.year || year > currentYear) {
+    return [];
+  }
+
+  const startMonth = year === birthPeriod.year ? birthPeriod.month : 1;
+  const endMonth = year === currentYear ? currentMonth : 12;
+
+  if (startMonth > endMonth) return [];
+
+  return MONTH_NAMES.slice(startMonth - 1, endMonth).map((label, index) => ({
+    label,
+    value: startMonth + index,
+  }));
+}
+
+function getMeasurementPeriodKey(year: number, month: number) {
+  return `${year}-${month}`;
+}
+
+function getLatestAvailableMonth(
+  monthOptions: MeasurementMonthOption[],
+  fallback: number,
+) {
+  return monthOptions[monthOptions.length - 1]?.value ?? fallback;
 }
 
 function getMeasurementFieldValues(measurement?: Pengukuran | null) {
@@ -116,9 +190,10 @@ export default function EditBalitaPage() {
   const params = useParams();
   const router = useRouter();
   const id = params.id as string;
+  const { isAdmin, isLoading: isRoleLoading } = useCurrentProfile();
   const [balita, setBalita] = useState<Balita | null>(null);
-  const [measurementByMonth, setMeasurementByMonth] = useState<
-    Record<number, Pengukuran | null>
+  const [measurementByPeriod, setMeasurementByPeriod] = useState<
+    Record<string, Pengukuran | null>
   >({});
   const [loadState, setLoadState] = useState<"loading" | "success" | "error">(
     "loading",
@@ -129,7 +204,6 @@ export default function EditBalitaPage() {
   const { success, warning, error } = useToast();
   const currentMonth = new Date().getMonth() + 1;
   const currentYear = new Date().getFullYear();
-  const monthOptions = MONTH_NAMES.slice(0, currentMonth);
 
   // Bind fields to state
   const [name, setName] = useState("");
@@ -140,12 +214,38 @@ export default function EditBalitaPage() {
   const [gender, setGender] = useState("");
   const [nikBayi, setNikBayi] = useState("");
   const [nikWali, setNikWali] = useState("");
+  const [noKk, setNoKk] = useState("");
+  const [selectedMeasurementYear, setSelectedMeasurementYear] =
+    useState(currentYear);
   const [selectedMeasurementMonth, setSelectedMeasurementMonth] =
     useState(currentMonth);
   const [panjangPengukuran, setPanjangPengukuran] = useState("");
   const [beratPengukuran, setBeratPengukuran] = useState("");
   const [lingkarKepalaPengukuran, setLingkarKepalaPengukuran] = useState("");
   const [lingkarLenganPengukuran, setLingkarLenganPengukuran] = useState("");
+  const birthPeriod = useMemo(
+    () => getBirthPeriod(balita?.tglLahir),
+    [balita?.tglLahir],
+  );
+  const yearOptions = useMemo(
+    () => getMeasurementYearOptions(birthPeriod, currentYear),
+    [birthPeriod, currentYear],
+  );
+  const monthOptions = useMemo(
+    () =>
+      getMeasurementMonthOptions(
+        selectedMeasurementYear,
+        birthPeriod,
+        currentMonth,
+        currentYear,
+      ),
+    [birthPeriod, currentMonth, currentYear, selectedMeasurementYear],
+  );
+  const hasAvailablePeriod = yearOptions.length > 0 && monthOptions.length > 0;
+  const selectedMeasurementPeriodKey = getMeasurementPeriodKey(
+    selectedMeasurementYear,
+    selectedMeasurementMonth,
+  );
 
   useEffect(() => {
     let isActive = true;
@@ -173,6 +273,7 @@ export default function EditBalitaPage() {
         );
         setNikBayi(found.nik || "");
         setNikWali(found.nikWali || "");
+        setNoKk(found.noKk || "");
         setLoadState("success");
       })
       .catch((err) => {
@@ -190,21 +291,54 @@ export default function EditBalitaPage() {
 
     Promise.resolve().then(() => {
       if (!isActive) return;
-      setMeasurementByMonth({});
+      setMeasurementByPeriod({});
+      setSelectedMeasurementYear(currentYear);
+      setSelectedMeasurementMonth(currentMonth);
       setMeasurementLoadState("loading");
     });
 
     return () => {
       isActive = false;
     };
-  }, [id]);
+  }, [currentMonth, currentYear, id]);
 
   useEffect(() => {
     let isActive = true;
 
-    if (selectedMeasurementMonth in measurementByMonth) {
+    if (!birthPeriod || !hasAvailablePeriod) {
       Promise.resolve().then(() => {
-        if (isActive) setMeasurementLoadState("success");
+        if (isActive) setMeasurementLoadState("loading");
+      });
+      return () => {
+        isActive = false;
+      };
+    }
+
+    const validMonth = monthOptions.some(
+      (month) => month.value === selectedMeasurementMonth,
+    );
+
+    if (!validMonth) {
+      Promise.resolve().then(() => {
+        if (isActive) setMeasurementLoadState("loading");
+      });
+      return () => {
+        isActive = false;
+      };
+    }
+
+    if (selectedMeasurementPeriodKey in measurementByPeriod) {
+      Promise.resolve().then(() => {
+        if (!isActive) return;
+
+        const fields = getMeasurementFieldValues(
+          measurementByPeriod[selectedMeasurementPeriodKey],
+        );
+        setPanjangPengukuran(fields.panjang);
+        setBeratPengukuran(fields.berat);
+        setLingkarKepalaPengukuran(fields.lingkarKepala);
+        setLingkarLenganPengukuran(fields.lingkarLengan);
+        setMeasurementLoadState("success");
       });
       return () => {
         isActive = false;
@@ -215,16 +349,16 @@ export default function EditBalitaPage() {
       if (isActive) setMeasurementLoadState("loading");
     });
 
-    getPengukuranList(selectedMeasurementMonth, currentYear)
+    getPengukuranList(selectedMeasurementMonth, selectedMeasurementYear)
       .then((list) => {
         if (!isActive) return;
         const measurement =
           list.find((pengukuran) => pengukuran.balitaId === id) ?? null;
         const fields = getMeasurementFieldValues(measurement);
 
-        setMeasurementByMonth((prev) => ({
+        setMeasurementByPeriod((prev) => ({
           ...prev,
-          [selectedMeasurementMonth]: measurement,
+          [selectedMeasurementPeriodKey]: measurement,
         }));
         setPanjangPengukuran(fields.panjang);
         setBeratPengukuran(fields.berat);
@@ -240,12 +374,65 @@ export default function EditBalitaPage() {
     return () => {
       isActive = false;
     };
-  }, [currentYear, id, measurementByMonth, selectedMeasurementMonth]);
+  }, [
+    birthPeriod,
+    currentMonth,
+    currentYear,
+    hasAvailablePeriod,
+    id,
+    measurementByPeriod,
+    monthOptions,
+    selectedMeasurementMonth,
+    selectedMeasurementPeriodKey,
+    selectedMeasurementYear,
+  ]);
 
-  const selectedMeasurement = measurementByMonth[selectedMeasurementMonth];
+  useEffect(() => {
+    if (!birthPeriod) return;
+    let isActive = true;
+
+    const yearIsAvailable = yearOptions.includes(selectedMeasurementYear);
+    const availableMonths = getMeasurementMonthOptions(
+      selectedMeasurementYear,
+      birthPeriod,
+      currentMonth,
+      currentYear,
+    );
+    const monthIsAvailable = availableMonths.some(
+      (month) => month.value === selectedMeasurementMonth,
+    );
+
+    Promise.resolve().then(() => {
+      if (!isActive) return;
+
+      if (!yearIsAvailable) {
+        setSelectedMeasurementYear(currentYear);
+        return;
+      }
+
+      if (!monthIsAvailable) {
+        setSelectedMeasurementMonth(
+          getLatestAvailableMonth(availableMonths, currentMonth),
+        );
+      }
+    });
+
+    return () => {
+      isActive = false;
+    };
+  }, [
+    birthPeriod,
+    currentMonth,
+    currentYear,
+    selectedMeasurementMonth,
+    selectedMeasurementYear,
+    yearOptions,
+  ]);
+
+  const selectedMeasurement = measurementByPeriod[selectedMeasurementPeriodKey];
   const isMeasurementStatusLoaded =
     measurementLoadState === "success" &&
-    selectedMeasurementMonth in measurementByMonth;
+    selectedMeasurementPeriodKey in measurementByPeriod;
 
   const applyMeasurementFields = (measurement?: Pengukuran | null) => {
     const fields = getMeasurementFieldValues(measurement);
@@ -278,7 +465,43 @@ export default function EditBalitaPage() {
     );
   }
 
-  const selectedMonthName = MONTH_NAMES[selectedMeasurementMonth - 1];
+  const selectedMonthName = MONTH_NAMES[selectedMeasurementMonth - 1] ?? "";
+  if (isRoleLoading || isAdmin) {
+    return (
+      <div className="min-h-screen bg-gray-50 text-black font-sans pb-10">
+        <Navbar title="Edit Data Balita" />
+        <main className="p-4 sm:p-6 max-w-4xl mx-auto mt-2">
+          <PageStatusState
+            tone={isAdmin ? "error" : "loading"}
+            title={
+              isAdmin ? "Edit data hanya untuk kader" : "Memuat akses pengguna"
+            }
+            description={
+              isAdmin
+                ? "Admin memiliki akses baca saja untuk data operasional. Perubahan data balita dan pengukuran dilakukan oleh kader."
+                : "Mengecek role pengguna sebelum menampilkan form edit."
+            }
+          />
+        </main>
+      </div>
+    );
+  }
+
+  if (!hasAvailablePeriod) {
+    return (
+      <div className="min-h-screen bg-gray-50 text-black font-sans pb-10">
+        <Navbar title="Edit Data Balita" />
+        <main className="p-4 sm:p-6 max-w-4xl mx-auto mt-2">
+          <PageStatusState
+            tone="error"
+            title="Periode pengukuran belum tersedia"
+            description="Tanggal lahir balita belum valid atau berada setelah bulan berjalan, sehingga periode pengukuran belum bisa dipilih."
+          />
+        </main>
+      </div>
+    );
+  }
+
   if (!isMeasurementStatusLoaded) {
     return (
       <div className="min-h-screen bg-gray-50 text-black font-sans pb-10">
@@ -294,7 +517,7 @@ export default function EditBalitaPage() {
             description={
               measurementLoadState === "error"
                 ? "Terjadi gangguan saat mengambil data pengukuran periode ini. Coba muat ulang halaman."
-                : `Mengambil data pengukuran ${selectedMonthName} ${currentYear}.`
+                : `Mengambil data pengukuran ${selectedMonthName} ${selectedMeasurementYear}.`
             }
           />
         </main>
@@ -308,9 +531,32 @@ export default function EditBalitaPage() {
     !isMeasurementStatusLoaded || !selectedMeasurement;
 
   const handleSave = async () => {
+    if (isAdmin) {
+      warning("Admin hanya dapat melihat data tanpa mengubah data operasional.");
+      return;
+    }
+
     const jenisKelamin = gender.toLowerCase().includes("perempuan")
       ? "PEREMPUAN"
       : "LAKI_LAKI";
+    const normalizedNikBayi = nikBayi.trim();
+    const normalizedNikWali = nikWali.trim();
+    const normalizedNoKk = noKk.trim();
+
+    if (normalizedNikBayi && normalizedNikBayi.length !== NIK_LENGTH) {
+      warning("NIK bayi / balita harus 16 digit angka.");
+      return;
+    }
+
+    if (normalizedNikWali && normalizedNikWali.length !== NIK_LENGTH) {
+      warning("NIK wali harus 16 digit angka.");
+      return;
+    }
+
+    if (normalizedNoKk && normalizedNoKk.length !== NIK_LENGTH) {
+      warning("No. KK harus 16 digit angka.");
+      return;
+    }
 
     const balitaPayload: Partial<Balita> = {};
 
@@ -322,8 +568,15 @@ export default function EditBalitaPage() {
     if (jenisKelamin !== balita.jenisKelamin) {
       balitaPayload.jenisKelamin = jenisKelamin;
     }
-    if (nikBayi !== (balita.nik || "")) balitaPayload.nik = nikBayi;
-    if (nikWali !== (balita.nikWali || "")) balitaPayload.nikWali = nikWali;
+    if (normalizedNikBayi !== (balita.nik || "")) {
+      balitaPayload.nik = normalizedNikBayi;
+    }
+    if (normalizedNikWali !== (balita.nikWali || "")) {
+      balitaPayload.nikWali = normalizedNikWali;
+    }
+    if (normalizedNoKk !== (balita.noKk || "")) {
+      balitaPayload.noKk = normalizedNoKk;
+    }
 
     const tinggiBadan = toOptionalNumber(panjangPengukuran);
     const beratBadan = toOptionalNumber(beratPengukuran);
@@ -373,7 +626,7 @@ export default function EditBalitaPage() {
 
       if (!selectedMeasurement) {
         warning(
-          `Belum ada data pengukuran untuk ${selectedMonthName} ${currentYear}.`,
+          `Belum ada data pengukuran untuk ${selectedMonthName} ${selectedMeasurementYear}.`,
         );
         return;
       }
@@ -395,7 +648,7 @@ export default function EditBalitaPage() {
 
       pengukuranPayload = {
         bulan: selectedMeasurementMonth,
-        tahun: currentYear,
+        tahun: selectedMeasurementYear,
         beratBadan,
         tinggiBadan,
         lingkarKepala,
@@ -571,20 +824,45 @@ export default function EditBalitaPage() {
                   NIK bayi / balita
                 </label>
                 <input
-                  type="number"
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={NIK_LENGTH}
                   placeholder="16 digit NIK"
                   value={nikBayi}
-                  onChange={(e) => setNikBayi(e.target.value)}
+                  onChange={(e) =>
+                    setNikBayi(onlyDigits(e.target.value, NIK_LENGTH))
+                  }
                   className="w-full border border-gray-200 rounded-xl p-3.5 text-sm text-black font-bold focus:outline-none focus:ring-1 focus:ring-teal-500 bg-white shadow-sm"
                 />
               </div>
               <div className="space-y-1">
                 <label className="text-xs font-bold text-black">NIK Wali</label>
                 <input
-                  type="number"
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={NIK_LENGTH}
                   placeholder="16 digit NIK"
                   value={nikWali}
-                  onChange={(e) => setNikWali(e.target.value)}
+                  onChange={(e) =>
+                    setNikWali(onlyDigits(e.target.value, NIK_LENGTH))
+                  }
+                  className="w-full border border-gray-200 rounded-xl p-3.5 text-sm text-black font-bold focus:outline-none focus:ring-1 focus:ring-teal-500 bg-white shadow-sm"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-black">
+                  No. KK
+                  <span className="text-gray-400 ml-1">(opsional)</span>
+                </label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={NIK_LENGTH}
+                  placeholder="16 digit nomor KK"
+                  value={noKk}
+                  onChange={(e) =>
+                    setNoKk(onlyDigits(e.target.value, NIK_LENGTH))
+                  }
                   className="w-full border border-gray-200 rounded-xl p-3.5 text-sm text-black font-bold focus:outline-none focus:ring-1 focus:ring-teal-500 bg-white shadow-sm"
                 />
               </div>
@@ -593,31 +871,80 @@ export default function EditBalitaPage() {
             <div className="space-y-4 pt-4 border-t border-gray-100">
               <div className="flex flex-col gap-1">
                 <p className="text-xs font-bold text-gray-500 ml-1">
-                  Data Pengukuran Tahun {currentYear}
+                  Data Pengukuran
                 </p>
                 <p className="text-[10px] font-medium text-gray-400 ml-1">
-                  Pilih bulan untuk melihat data pengukuran pada periode
-                  tersebut.
+                  Pilih periode mulai dari bulan lahir balita sampai bulan
+                  berjalan.
                 </p>
               </div>
 
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-black">
-                  Bulan Pengukuran
-                </label>
-                <div className="relative">
+              <div className="grid grid-cols-1 sm:grid-cols-[120px_1fr] gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-black">Tahun</label>
+                  <div className="relative">
+                    <select
+                      value={selectedMeasurementYear}
+                      onChange={(e) => {
+                        const year = Number(e.target.value);
+                        const availableMonths = getMeasurementMonthOptions(
+                          year,
+                          birthPeriod,
+                          currentMonth,
+                          currentYear,
+                        );
+
+                        setSelectedMeasurementYear(year);
+                        if (
+                          !availableMonths.some(
+                            (month) => month.value === selectedMeasurementMonth,
+                          )
+                        ) {
+                          setSelectedMeasurementMonth(
+                            getLatestAvailableMonth(
+                              availableMonths,
+                              selectedMeasurementMonth,
+                            ),
+                          );
+                        }
+                      }}
+                      className="w-full appearance-none bg-white border border-gray-200 rounded-xl p-3.5 text-sm font-bold text-black focus:outline-none focus:ring-1 focus:ring-teal-500 shadow-sm cursor-pointer"
+                    >
+                      {yearOptions.map((year) => (
+                        <option key={year} value={year}>
+                          {year}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown
+                      size={20}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 text-black pointer-events-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-black">
+                    Bulan Pengukuran
+                  </label>
+                  <div className="relative">
                   <select
                     value={selectedMeasurementMonth}
                     onChange={(e) => {
                       const month = Number(e.target.value);
+                      const periodKey = getMeasurementPeriodKey(
+                        selectedMeasurementYear,
+                        month,
+                      );
+
                       setSelectedMeasurementMonth(month);
-                      applyMeasurementFields(measurementByMonth[month]);
+                      applyMeasurementFields(measurementByPeriod[periodKey]);
                     }}
                     className="w-full appearance-none bg-white border border-gray-200 rounded-xl p-3.5 text-sm font-bold text-black focus:outline-none focus:ring-1 focus:ring-teal-500 shadow-sm cursor-pointer"
                   >
-                    {monthOptions.map((month, index) => (
-                      <option key={month} value={index + 1}>
-                        {month} {currentYear}
+                    {monthOptions.map((month) => (
+                      <option key={month.value} value={month.value}>
+                        {month.label} {selectedMeasurementYear}
                       </option>
                     ))}
                   </select>
@@ -625,6 +952,7 @@ export default function EditBalitaPage() {
                     size={20}
                     className="absolute right-4 top-1/2 -translate-y-1/2 text-black pointer-events-none"
                   />
+                  </div>
                 </div>
               </div>
 
@@ -638,10 +966,10 @@ export default function EditBalitaPage() {
                 }`}
               >
                 {!isMeasurementStatusLoaded
-                  ? `Mengecek data pengukuran ${selectedMonthName} ${currentYear}...`
+                  ? `Mengecek data pengukuran ${selectedMonthName} ${selectedMeasurementYear}...`
                   : selectedMeasurement
-                    ? `Data pengukuran ${selectedMonthName} ${currentYear} ditemukan.`
-                    : `Belum ada data pengukuran untuk ${selectedMonthName} ${currentYear}. Input pengukuran baru melalui halaman Input Pengukuran.`}
+                    ? `Data pengukuran ${selectedMonthName} ${selectedMeasurementYear} ditemukan.`
+                    : `Belum ada data pengukuran untuk ${selectedMonthName} ${selectedMeasurementYear}. Input pengukuran baru melalui halaman Input Pengukuran.`}
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

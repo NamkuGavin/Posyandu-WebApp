@@ -1,13 +1,29 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { ArrowLeft, Baby, ChevronDown } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import Navbar from "@/components/layout/Navbar";
 import Card from "@/components/ui/Card";
 import { InfoPanel, PageStatusState } from "@/components/ui/PageParts";
 import { getBalitaById, addPengukuran, getPengukuranList } from "@/lib/api";
+import { useCurrentProfile } from "@/lib/useCurrentProfile";
 import { Balita, Pengukuran } from "@/types";
+
+const MONTH_NAMES = [
+  "Januari",
+  "Februari",
+  "Maret",
+  "April",
+  "Mei",
+  "Juni",
+  "Juli",
+  "Agustus",
+  "September",
+  "Oktober",
+  "November",
+  "Desember",
+];
 
 function calculateAgeInMonths(birthDate: string): number {
   const birth = new Date(birthDate);
@@ -15,6 +31,77 @@ function calculateAgeInMonths(birthDate: string): number {
   const diffYears = now.getFullYear() - birth.getFullYear();
   const diffMonths = now.getMonth() - birth.getMonth();
   return diffYears * 12 + diffMonths;
+}
+
+type MeasurementPeriod = {
+  month: number;
+  year: number;
+};
+
+type MeasurementMonthOption = {
+  label: string;
+  value: number;
+};
+
+function getBirthPeriod(dateString?: string | null): MeasurementPeriod | null {
+  if (!dateString) return null;
+
+  const date = new Date(dateString);
+  if (Number.isNaN(date.getTime())) return null;
+
+  return {
+    month: date.getUTCMonth() + 1,
+    year: date.getUTCFullYear(),
+  };
+}
+
+function getMeasurementYearOptions(
+  birthPeriod: MeasurementPeriod | null,
+  currentYear: number,
+) {
+  if (!birthPeriod || birthPeriod.year > currentYear) return [];
+
+  const years = [];
+  for (let year = currentYear; year >= birthPeriod.year; year -= 1) {
+    years.push(year);
+  }
+
+  return years;
+}
+
+function getMeasurementMonthOptions(
+  year: number,
+  birthPeriod: MeasurementPeriod | null,
+  currentMonth: number,
+  currentYear: number,
+  monthNames: string[],
+): MeasurementMonthOption[] {
+  if (!birthPeriod || year < birthPeriod.year || year > currentYear) {
+    return [];
+  }
+
+  const startMonth = year === birthPeriod.year ? birthPeriod.month : 1;
+  const endMonth = year === currentYear ? currentMonth : 12;
+
+  if (startMonth > endMonth) return [];
+
+  return monthNames
+    .slice(startMonth - 1, endMonth)
+    .map((label, index) => ({
+      label,
+      value: startMonth + index,
+    }));
+}
+
+function getMeasurementPeriodKey(year: number, month: number) {
+  return `${year}-${month}`;
+}
+
+function getLatestAvailableMonth(
+  monthOptions: MeasurementMonthOption[],
+  fallback: number,
+) {
+  return monthOptions[monthOptions.length - 1]?.value ?? fallback;
 }
 import { useToast } from "@/components/ui/Toast";
 
@@ -67,9 +154,10 @@ export default function UkurBalitaPage() {
   const params = useParams();
   const router = useRouter();
   const id = params.id as string;
+  const { isAdmin, isLoading: isRoleLoading } = useCurrentProfile();
   const [balita, setBalita] = useState<Balita | null>(null);
-  const [measurementByMonth, setMeasurementByMonth] = useState<
-    Record<number, Pengukuran | null>
+  const [measurementByPeriod, setMeasurementByPeriod] = useState<
+    Record<string, Pengukuran | null>
   >({});
   const [loadState, setLoadState] = useState<"loading" | "success" | "error">(
     "loading",
@@ -85,31 +173,42 @@ export default function UkurBalitaPage() {
   const [berat, setBerat] = useState("");
   const [lingkarKepala, setLingkarKepala] = useState("");
   const [lingkarLengan, setLingkarLengan] = useState("");
-  const monthNames = [
-    "Januari",
-    "Februari",
-    "Maret",
-    "April",
-    "Mei",
-    "Juni",
-    "Juli",
-    "Agustus",
-    "September",
-    "Oktober",
-    "November",
-    "Desember",
-  ];
   const currentDate = new Date();
   const currentMonth = currentDate.getMonth() + 1;
   const currentYear = currentDate.getFullYear();
-  const monthOptions = monthNames.slice(0, currentMonth);
+  const [selectedYear, setSelectedYear] = useState(currentYear);
   const [selectedMonth, setSelectedMonth] = useState(currentMonth);
   const [isMeasuredDialogOpen, setIsMeasuredDialogOpen] = useState(false);
 
-  const selectedMeasurement = measurementByMonth[selectedMonth];
+  const birthPeriod = useMemo(
+    () => getBirthPeriod(balita?.tglLahir),
+    [balita?.tglLahir],
+  );
+  const yearOptions = useMemo(
+    () => getMeasurementYearOptions(birthPeriod, currentYear),
+    [birthPeriod, currentYear],
+  );
+  const monthOptions = useMemo(
+    () =>
+      getMeasurementMonthOptions(
+        selectedYear,
+        birthPeriod,
+        currentMonth,
+        currentYear,
+        MONTH_NAMES,
+      ),
+    [birthPeriod, currentMonth, currentYear, selectedYear],
+  );
+  const hasAvailablePeriod = yearOptions.length > 0 && monthOptions.length > 0;
+  const selectedPeriodKey = getMeasurementPeriodKey(
+    selectedYear,
+    selectedMonth,
+  );
+  const selectedMeasurement = measurementByPeriod[selectedPeriodKey];
   const isMeasurementStatusLoaded =
-    measurementLoadState === "success" && selectedMonth in measurementByMonth;
-  const selectedMonthName = monthNames[selectedMonth - 1];
+    measurementLoadState === "success" &&
+    selectedPeriodKey in measurementByPeriod;
+  const selectedMonthName = MONTH_NAMES[selectedMonth - 1] ?? "";
   const isMeasurementLocked = Boolean(selectedMeasurement);
 
   useEffect(() => {
@@ -148,19 +247,43 @@ export default function UkurBalitaPage() {
 
     Promise.resolve().then(() => {
       if (!isActive) return;
-      setMeasurementByMonth({});
+      setMeasurementByPeriod({});
+      setSelectedYear(currentYear);
+      setSelectedMonth(currentMonth);
       setMeasurementLoadState("loading");
     });
 
     return () => {
       isActive = false;
     };
-  }, [id]);
+  }, [currentMonth, currentYear, id]);
 
   useEffect(() => {
     let isActive = true;
 
-    if (selectedMonth in measurementByMonth) {
+    if (!birthPeriod || !hasAvailablePeriod) {
+      Promise.resolve().then(() => {
+        if (isActive) setMeasurementLoadState("loading");
+      });
+      return () => {
+        isActive = false;
+      };
+    }
+
+    const validMonth = monthOptions.some(
+      (month) => month.value === selectedMonth,
+    );
+
+    if (!validMonth) {
+      Promise.resolve().then(() => {
+        if (isActive) setMeasurementLoadState("loading");
+      });
+      return () => {
+        isActive = false;
+      };
+    }
+
+    if (selectedPeriodKey in measurementByPeriod) {
       Promise.resolve().then(() => {
         if (isActive) setMeasurementLoadState("success");
       });
@@ -173,14 +296,14 @@ export default function UkurBalitaPage() {
       if (isActive) setMeasurementLoadState("loading");
     });
 
-    getPengukuranList(selectedMonth, currentYear)
+    getPengukuranList(selectedMonth, selectedYear)
       .then((list) => {
         if (!isActive) return;
         const measurement =
           list.find((pengukuran) => pengukuran.balitaId === id) ?? null;
-        setMeasurementByMonth((prev) => ({
+        setMeasurementByPeriod((prev) => ({
           ...prev,
-          [selectedMonth]: measurement,
+          [selectedPeriodKey]: measurement,
         }));
         setMeasurementLoadState("success");
       })
@@ -192,20 +315,90 @@ export default function UkurBalitaPage() {
     return () => {
       isActive = false;
     };
-  }, [currentYear, id, measurementByMonth, selectedMonth]);
+  }, [
+    birthPeriod,
+    currentMonth,
+    currentYear,
+    hasAvailablePeriod,
+    id,
+    measurementByPeriod,
+    monthOptions,
+    selectedMonth,
+    selectedPeriodKey,
+    selectedYear,
+  ]);
+
+  useEffect(() => {
+    if (!birthPeriod) return;
+    let isActive = true;
+
+    const yearIsAvailable = yearOptions.includes(selectedYear);
+    const availableMonths = getMeasurementMonthOptions(
+      selectedYear,
+      birthPeriod,
+      currentMonth,
+      currentYear,
+      MONTH_NAMES,
+    );
+    const monthIsAvailable = availableMonths.some(
+      (month) => month.value === selectedMonth,
+    );
+
+    Promise.resolve().then(() => {
+      if (!isActive) return;
+
+      if (!yearIsAvailable) {
+        setSelectedYear(currentYear);
+        return;
+      }
+
+      if (!monthIsAvailable) {
+        setSelectedMonth(
+          getLatestAvailableMonth(availableMonths, currentMonth),
+        );
+      }
+    });
+
+    return () => {
+      isActive = false;
+    };
+  }, [
+    birthPeriod,
+    currentMonth,
+    currentYear,
+    selectedMonth,
+    selectedYear,
+    yearOptions,
+  ]);
 
   // Clean lingkarLengan if child is 6 months or under
   useEffect(() => {
+    let isActive = true;
+
     if (ageInMonths !== null && ageInMonths <= 6) {
-      setLingkarLengan("");
+      Promise.resolve().then(() => {
+        if (isActive) setLingkarLengan("");
+      });
     }
+
+    return () => {
+      isActive = false;
+    };
   }, [ageInMonths]);
 
   useEffect(() => {
+    let isActive = true;
+
     if (selectedMeasurement) {
-      setIsMeasuredDialogOpen(true);
+      Promise.resolve().then(() => {
+        if (isActive) setIsMeasuredDialogOpen(true);
+      });
     }
-  }, [selectedMeasurement, selectedMonth]);
+
+    return () => {
+      isActive = false;
+    };
+  }, [selectedMeasurement, selectedMonth, selectedYear]);
 
   if (loadState !== "success" || !balita || balita.id !== id) {
     return (
@@ -230,6 +423,44 @@ export default function UkurBalitaPage() {
     );
   }
 
+  if (isRoleLoading || isAdmin) {
+    return (
+      <div className="min-h-screen bg-gray-50 text-black font-sans pb-10">
+        <Navbar title="Input Pengukuran" />
+        <main className="p-4 sm:p-6 max-w-2xl mx-auto mt-2">
+          <PageStatusState
+            tone={isAdmin ? "error" : "loading"}
+            title={
+              isAdmin
+                ? "Input pengukuran hanya untuk kader"
+                : "Memuat akses pengguna"
+            }
+            description={
+              isAdmin
+                ? "Admin memiliki akses baca saja untuk data operasional. Pengukuran balita dilakukan oleh kader."
+                : "Mengecek role pengguna sebelum menampilkan form pengukuran."
+            }
+          />
+        </main>
+      </div>
+    );
+  }
+
+  if (!hasAvailablePeriod) {
+    return (
+      <div className="min-h-screen bg-gray-50 text-black font-sans pb-10">
+        <Navbar title="Input Pengukuran" />
+        <main className="p-4 sm:p-6 max-w-2xl mx-auto mt-2">
+          <PageStatusState
+            tone="error"
+            title="Periode pengukuran belum tersedia"
+            description="Tanggal lahir balita belum valid atau berada setelah bulan berjalan, sehingga periode pengukuran belum bisa dipilih."
+          />
+        </main>
+      </div>
+    );
+  }
+
   if (!isMeasurementStatusLoaded) {
     return (
       <div className="min-h-screen bg-gray-50 text-black font-sans pb-10">
@@ -245,7 +476,7 @@ export default function UkurBalitaPage() {
             description={
               measurementLoadState === "error"
                 ? "Terjadi gangguan saat mengambil data pengukuran periode ini. Coba muat ulang halaman."
-                : `Mengambil status pengukuran ${selectedMonthName} ${currentYear}.`
+                : `Mengambil status pengukuran ${selectedMonthName} ${selectedYear}.`
             }
           />
         </main>
@@ -254,6 +485,11 @@ export default function UkurBalitaPage() {
   }
 
   const handleSave = async () => {
+    if (isAdmin) {
+      warning("Admin hanya dapat melihat data pengukuran tanpa mengubah data.");
+      return;
+    }
+
     const isOver6Months = ageInMonths !== null && ageInMonths > 6;
 
     if (!isMeasurementStatusLoaded) {
@@ -282,7 +518,7 @@ export default function UkurBalitaPage() {
 
     const newMeasurement: Omit<Pengukuran, "id"> = {
       bulan: selectedMonth,
-      tahun: currentYear,
+      tahun: selectedYear,
       beratBadan: parseFloat(berat),
       tinggiBadan: parseFloat(tinggi),
       lingkarKepala: lingkarKepala ? parseFloat(lingkarKepala) : null,
@@ -344,46 +580,94 @@ export default function UkurBalitaPage() {
           <p className="text-[10px] font-bold uppercase tracking-widest text-[#0d9488]">
             Periode Pengukuran
           </p>
-          <div className="relative">
-            <select
-              value={selectedMonth}
-              onChange={(e) => {
-                const month = Number(e.target.value);
-                setSelectedMonth(month);
-                const alreadyMeasured = measurementByMonth[month];
-                if (alreadyMeasured) {
-                  setIsMeasuredDialogOpen(true);
-                }
-              }}
-              className="w-full appearance-none bg-white border border-teal-100 rounded-xl p-3.5 pr-10 text-sm text-black font-bold focus:outline-none focus:ring-1 focus:ring-teal-500 shadow-sm cursor-pointer"
-            >
-              {monthOptions.map((month, index) => {
-                const monthNumber = index + 1;
-                const isStatusLoaded = monthNumber in measurementByMonth;
-                const isMeasured = Boolean(measurementByMonth[monthNumber]);
+          <div className="grid grid-cols-1 sm:grid-cols-[120px_1fr] gap-3">
+            <div className="relative">
+              <select
+                value={selectedYear}
+                onChange={(e) => {
+                  const year = Number(e.target.value);
+                  const availableMonths = getMeasurementMonthOptions(
+                    year,
+                    birthPeriod,
+                    currentMonth,
+                    currentYear,
+                    MONTH_NAMES,
+                  );
 
-                return (
-                  <option key={month} value={monthNumber}>
-                    {month} {currentYear}
-                    {isStatusLoaded
-                      ? ` - ${isMeasured ? "Sudah diukur" : "Belum diukur"}`
-                      : ""}
+                  setSelectedYear(year);
+                  if (
+                    !availableMonths.some(
+                      (month) => month.value === selectedMonth,
+                    )
+                  ) {
+                    setSelectedMonth(
+                      getLatestAvailableMonth(availableMonths, selectedMonth),
+                    );
+                  }
+                }}
+                className="w-full appearance-none bg-white border border-teal-100 rounded-xl p-3.5 pr-10 text-sm text-black font-bold focus:outline-none focus:ring-1 focus:ring-teal-500 shadow-sm cursor-pointer"
+              >
+                {yearOptions.map((year) => (
+                  <option key={year} value={year}>
+                    {year}
                   </option>
-                );
-              })}
-            </select>
-            <ChevronDown
-              size={18}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none"
-            />
+                ))}
+              </select>
+              <ChevronDown
+                size={18}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none"
+              />
+            </div>
+            <div className="relative">
+              <select
+                value={selectedMonth}
+                onChange={(e) => {
+                  const month = Number(e.target.value);
+                  const periodKey = getMeasurementPeriodKey(
+                    selectedYear,
+                    month,
+                  );
+
+                  setSelectedMonth(month);
+                  const alreadyMeasured = measurementByPeriod[periodKey];
+                  if (alreadyMeasured) {
+                    setIsMeasuredDialogOpen(true);
+                  }
+                }}
+                className="w-full appearance-none bg-white border border-teal-100 rounded-xl p-3.5 pr-10 text-sm text-black font-bold focus:outline-none focus:ring-1 focus:ring-teal-500 shadow-sm cursor-pointer"
+              >
+                {monthOptions.map((month) => {
+                  const periodKey = getMeasurementPeriodKey(
+                    selectedYear,
+                    month.value,
+                  );
+                  const isStatusLoaded = periodKey in measurementByPeriod;
+                  const isMeasured = Boolean(measurementByPeriod[periodKey]);
+
+                  return (
+                    <option key={periodKey} value={month.value}>
+                      {month.label} {selectedYear}
+                      {isStatusLoaded
+                        ? ` - ${isMeasured ? "Sudah diukur" : "Belum diukur"}`
+                        : ""}
+                    </option>
+                  );
+                })}
+              </select>
+              <ChevronDown
+                size={18}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none"
+              />
+            </div>
           </div>
           <p className="text-xs font-medium leading-relaxed text-gray-600">
-            Pilih bulan pengukuran pada tahun berjalan. Jika bulan sudah diukur,
-            ubah datanya lewat Edit Data Balita.
+            Pilih periode pengukuran mulai dari bulan lahir balita sampai bulan
+            berjalan. Jika bulan sudah diukur, ubah datanya lewat Edit Data
+            Balita.
           </p>
           {selectedMeasurement && (
             <p className="text-xs font-bold text-orange-600">
-              {selectedMonthName} {currentYear} sudah memiliki data pengukuran.
+              {selectedMonthName} {selectedYear} sudah memiliki data pengukuran.
               Semua field dikunci, gunakan Edit Data Balita untuk mengubahnya.
             </p>
           )}
@@ -450,7 +734,7 @@ export default function UkurBalitaPage() {
               Pengukuran Sudah Ada
             </h3>
             <p className="text-xs text-gray-600 leading-relaxed mb-6">
-              Balita ini sudah diukur pada {selectedMonthName} {currentYear}.
+              Balita ini sudah diukur pada {selectedMonthName} {selectedYear}.
               Jika ingin mengubah data pengukuran, gunakan fitur Edit Data
               Balita.
             </p>

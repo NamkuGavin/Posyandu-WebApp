@@ -12,11 +12,44 @@ import {
 import { useRouter } from "next/navigation";
 import Navbar from "@/components/layout/Navbar";
 import Card from "@/components/ui/Card";
-import { InfoPanel } from "@/components/ui/PageParts";
+import { InfoPanel, PageStatusState } from "@/components/ui/PageParts";
 import { createBalita } from "@/lib/api";
+import { useCurrentProfile } from "@/lib/useCurrentProfile";
 
 const FIXED_ALAMAT = "Kecamatan Sidorejo Kidul";
 const FIXED_RW = "09";
+const NIK_LENGTH = 16;
+const PHONE_MIN_LENGTH = 10;
+const PHONE_MAX_LENGTH = 13;
+const WHATSAPP_LOCAL_MAX_LENGTH = PHONE_MAX_LENGTH - 1;
+const WHATSAPP_INPUT_MAX_LENGTH = PHONE_MAX_LENGTH + 3;
+const PHONE_NUMBER_PATTERN = /^(08|62|\+62)[0-9]{9,13}$/;
+
+function onlyDigits(value: string, maxLength: number) {
+  return value.replace(/\D/g, "").slice(0, maxLength);
+}
+
+function normalizeWhatsappLocalInput(value: string) {
+  const trimmed = value.trim();
+  let digits = trimmed.startsWith("+62")
+    ? trimmed.slice(3).replace(/\D/g, "")
+    : trimmed.replace(/\D/g, "");
+
+  if (digits.startsWith("62")) {
+    digits = digits.slice(2);
+  }
+
+  if (digits.startsWith("0")) {
+    digits = digits.slice(1);
+  }
+
+  return digits.slice(0, WHATSAPP_LOCAL_MAX_LENGTH);
+}
+
+function getWhatsappPayload(localNumber: string) {
+  const normalized = normalizeWhatsappLocalInput(localNumber);
+  return normalized ? `0${normalized}` : "";
+}
 
 function formatAgeDetailed(birthDateString: string): string {
   if (!birthDateString) return "";
@@ -114,6 +147,7 @@ function MeasurementInputField({
 
 export default function TambahBalitaPage() {
   const router = useRouter();
+  const { isAdmin, isLoading: isRoleLoading } = useCurrentProfile();
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [countdown, setCountdown] = useState(4);
@@ -133,6 +167,7 @@ export default function TambahBalitaPage() {
     // Step 2: Data Wali
     namaWali: "",
     nikWali: "",
+    noKk: "",
     whatsapp: "",
 
     // Step 3: Riwayat & Pengukuran
@@ -153,38 +188,58 @@ export default function TambahBalitaPage() {
   const [ageInMonths, setAgeInMonths] = useState<number | null>(null);
 
   useEffect(() => {
-    if (!formData.tanggalLahir) {
-      setAgeInMonths(null);
-      return;
-    }
+    let isActive = true;
 
-    const birthDate = new Date(formData.tanggalLahir);
-    const today = new Date();
+    Promise.resolve().then(() => {
+      if (!isActive) return;
 
-    let years = today.getFullYear() - birthDate.getFullYear();
-    let months = today.getMonth() - birthDate.getMonth();
+      if (!formData.tanggalLahir) {
+        setAgeInMonths(null);
+        return;
+      }
 
-    if (today.getDate() < birthDate.getDate()) {
-      months--;
-    }
+      const birthDate = new Date(formData.tanggalLahir);
+      const today = new Date();
 
-    const totalMonths = years * 12 + months;
-    const finalMonths = totalMonths >= 0 ? totalMonths : 0;
-    setAgeInMonths(finalMonths);
+      const years = today.getFullYear() - birthDate.getFullYear();
+      let months = today.getMonth() - birthDate.getMonth();
+
+      if (today.getDate() < birthDate.getDate()) {
+        months--;
+      }
+
+      const totalMonths = years * 12 + months;
+      const finalMonths = totalMonths >= 0 ? totalMonths : 0;
+      setAgeInMonths(finalMonths);
+    });
+
+    return () => {
+      isActive = false;
+    };
   }, [formData.tanggalLahir]);
 
   // Clear lingkar lengan when age is 6 months or under
   useEffect(() => {
+    let isActive = true;
+
     if (ageInMonths !== null && ageInMonths <= 6) {
-      setFormData((prev) => ({ ...prev, lingkarLenganSekarang: "" }));
-      if (errors.lingkarLenganSekarang) {
-        setErrors((prev) => {
-          const copy = { ...prev };
-          delete copy.lingkarLenganSekarang;
-          return copy;
-        });
-      }
+      Promise.resolve().then(() => {
+        if (!isActive) return;
+
+        setFormData((prev) => ({ ...prev, lingkarLenganSekarang: "" }));
+        if (errors.lingkarLenganSekarang) {
+          setErrors((prev) => {
+            const copy = { ...prev };
+            delete copy.lingkarLenganSekarang;
+            return copy;
+          });
+        }
+      });
     }
+
+    return () => {
+      isActive = false;
+    };
   }, [ageInMonths, errors.lingkarLenganSekarang]);
 
   // Handle countdown redirection
@@ -215,7 +270,7 @@ export default function TambahBalitaPage() {
     const newErrors: { [key: string]: string } = {};
     if (!formData.namaBalita.trim())
       newErrors.namaBalita = "Nama balita wajib diisi";
-    if (formData.nikBalita && formData.nikBalita.length !== 16) {
+    if (formData.nikBalita && formData.nikBalita.length !== NIK_LENGTH) {
       newErrors.nikBalita = "NIK harus terdiri dari 16 digit angka";
     }
     if (!formData.anakKe) {
@@ -244,11 +299,25 @@ export default function TambahBalitaPage() {
   const validateStep2 = () => {
     const newErrors: { [key: string]: string } = {};
     if (!formData.namaWali.trim()) newErrors.namaWali = "Nama wali wajib diisi";
-    if (formData.nikWali && formData.nikWali.length !== 16) {
+    if (formData.nikWali && formData.nikWali.length !== NIK_LENGTH) {
       newErrors.nikWali = "NIK wali harus terdiri dari 16 digit angka";
     }
-    if (formData.whatsapp.trim() && formData.whatsapp.length < 9) {
-      newErrors.whatsapp = "Masukkan nomor WhatsApp yang valid";
+    if (formData.noKk && formData.noKk.length !== NIK_LENGTH) {
+      newErrors.noKk = "No. KK harus terdiri dari 16 digit angka";
+    }
+    if (formData.whatsapp.trim()) {
+      const whatsappPayload = getWhatsappPayload(formData.whatsapp);
+      const savedPhoneLength = whatsappPayload.length;
+      if (
+        savedPhoneLength < PHONE_MIN_LENGTH ||
+        savedPhoneLength > PHONE_MAX_LENGTH
+      ) {
+        newErrors.whatsapp =
+          "Nomor WhatsApp harus 10-13 digit jika diisi";
+      } else if (!PHONE_NUMBER_PATTERN.test(whatsappPayload)) {
+        newErrors.whatsapp =
+          "Nomor WhatsApp harus mengikuti format 08, 62, atau +62";
+      }
     }
 
     setErrors(newErrors);
@@ -258,6 +327,8 @@ export default function TambahBalitaPage() {
       document.getElementById("namaWali")?.focus();
     } else if (newErrors.nikWali) {
       document.getElementById("nikWali")?.focus();
+    } else if (newErrors.noKk) {
+      document.getElementById("noKk")?.focus();
     } else if (newErrors.whatsapp) {
       document.getElementById("whatsapp")?.focus();
     }
@@ -397,7 +468,7 @@ export default function TambahBalitaPage() {
     } else if (step === 3) {
       if (validateStep3()) {
         try {
-          const whatsapp = formData.whatsapp.trim();
+          const whatsapp = getWhatsappPayload(formData.whatsapp);
 
           await createBalita({
             nama: formData.namaBalita,
@@ -406,7 +477,8 @@ export default function TambahBalitaPage() {
               formData.jenisKelamin === "Laki-laki" ? "LAKI_LAKI" : "PEREMPUAN",
             namaWali: formData.namaWali,
             nikWali: formData.nikWali || undefined,
-            noWhatsapp: whatsapp ? "0" + whatsapp : undefined,
+            noKk: formData.noKk || undefined,
+            noWhatsapp: whatsapp || undefined,
             alamat: FIXED_ALAMAT,
             rt: parseInt(formData.rt),
             rw: parseInt(FIXED_RW, 10),
@@ -431,8 +503,12 @@ export default function TambahBalitaPage() {
           });
 
           setShowSuccessModal(true);
-        } catch (err: any) {
-          alert(err.message || "Gagal mendaftarkan balita.");
+        } catch (err: unknown) {
+          alert(
+            err instanceof Error
+              ? err.message
+              : "Gagal mendaftarkan balita.",
+          );
         }
       }
     }
@@ -449,6 +525,27 @@ export default function TambahBalitaPage() {
       });
     }
   };
+
+  if (isRoleLoading || isAdmin) {
+    return (
+      <div className="min-h-screen bg-gray-50 text-black font-sans pb-12">
+        <Navbar title="Tambah Balita" />
+        <main className="p-4 sm:p-6 max-w-md mx-auto mt-2">
+          <PageStatusState
+            tone={isAdmin ? "error" : "loading"}
+            title={
+              isAdmin ? "Tambah balita hanya untuk kader" : "Memuat akses pengguna"
+            }
+            description={
+              isAdmin
+                ? "Admin memiliki akses baca saja untuk data operasional. Pendaftaran balita dilakukan oleh kader."
+                : "Mengecek role pengguna sebelum menampilkan form tambah balita."
+            }
+          />
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 text-black font-sans pb-12">
@@ -544,11 +641,12 @@ export default function TambahBalitaPage() {
                 <input
                   type="text"
                   id="nikBalita"
-                  maxLength={16}
+                  inputMode="numeric"
+                  maxLength={NIK_LENGTH}
                   placeholder="16 digit NIK"
                   value={formData.nikBalita}
                   onChange={(e) => {
-                    const val = e.target.value.replace(/[^0-9]/g, "");
+                    const val = onlyDigits(e.target.value, NIK_LENGTH);
                     handleInputChange("nikBalita", val);
                   }}
                   className={`w-full px-4 py-3 border rounded-xl outline-none text-sm text-black transition-all bg-white ${
@@ -747,11 +845,12 @@ export default function TambahBalitaPage() {
                 <input
                   type="text"
                   id="nikWali"
-                  maxLength={16}
+                  inputMode="numeric"
+                  maxLength={NIK_LENGTH}
                   placeholder="16 digit NIK"
                   value={formData.nikWali}
                   onChange={(e) => {
-                    const val = e.target.value.replace(/[^0-9]/g, "");
+                    const val = onlyDigits(e.target.value, NIK_LENGTH);
                     handleInputChange("nikWali", val);
                   }}
                   className={`w-full px-4 py-3 border rounded-xl outline-none text-sm text-black transition-all bg-white ${
@@ -763,6 +862,39 @@ export default function TambahBalitaPage() {
                 {errors.nikWali && (
                   <p className="text-[10px] text-rose-500 flex items-center gap-1 font-medium">
                     <AlertCircle size={10} /> {errors.nikWali}
+                  </p>
+                )}
+              </div>
+
+              {/* Nomor KK */}
+              <div className="space-y-2">
+                <label
+                  htmlFor="noKk"
+                  className="block text-xs font-bold text-gray-700"
+                >
+                  No. KK
+                  <span className="text-gray-400 ml-1">(opsional)</span>
+                </label>
+                <input
+                  type="text"
+                  id="noKk"
+                  inputMode="numeric"
+                  maxLength={NIK_LENGTH}
+                  placeholder="16 digit nomor KK"
+                  value={formData.noKk}
+                  onChange={(e) => {
+                    const val = onlyDigits(e.target.value, NIK_LENGTH);
+                    handleInputChange("noKk", val);
+                  }}
+                  className={`w-full px-4 py-3 border rounded-xl outline-none text-sm text-black transition-all bg-white ${
+                    errors.noKk
+                      ? "border-rose-400 focus:ring-2 focus:ring-rose-200"
+                      : "border-gray-200 focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500"
+                  }`}
+                />
+                {errors.noKk && (
+                  <p className="text-[10px] text-rose-500 flex items-center gap-1 font-medium">
+                    <AlertCircle size={10} /> {errors.noKk}
                   </p>
                 )}
               </div>
@@ -783,13 +915,12 @@ export default function TambahBalitaPage() {
                   <input
                     type="tel"
                     id="whatsapp"
+                    inputMode="numeric"
+                    maxLength={WHATSAPP_INPUT_MAX_LENGTH}
                     placeholder="81234567890"
                     value={formData.whatsapp}
                     onChange={(e) => {
-                      let val = e.target.value.replace(/[^0-9]/g, "");
-                      if (val.startsWith("0")) {
-                        val = val.substring(1);
-                      }
+                      const val = normalizeWhatsappLocalInput(e.target.value);
                       handleInputChange("whatsapp", val);
                     }}
                     className={`flex-1 px-4 py-3 border rounded-xl outline-none text-sm text-black transition-all bg-white ${

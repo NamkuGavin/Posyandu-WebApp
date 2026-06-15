@@ -8,6 +8,7 @@ import {
   ClipboardCheck, 
   BarChart3, 
   LogOut, 
+  ShieldCheck,
   X
 } from "lucide-react";
 import Image from "next/image";
@@ -28,7 +29,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const [isLogoutDialogOpen, setIsLogoutDialogOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
-  const menuItems = [
+  const baseMenuItems = [
     {
       label: "Beranda",
       href: "/dashboard",
@@ -54,6 +55,18 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
       description: "Statistik Posyandu"
     }
   ];
+  const isAdmin = profile?.role?.toUpperCase() === "ADMIN";
+  const menuItems = isAdmin
+    ? [
+        ...baseMenuItems,
+        {
+          label: "Admin",
+          href: "/dashboard/admin/kader",
+          icon: ShieldCheck,
+          description: "Kelola akun kader",
+        },
+      ]
+    : baseMenuItems;
 
   useEffect(() => {
     getCurrentUser()
@@ -61,9 +74,9 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
       .catch(() => setProfile(null));
   }, []);
 
-  const displayName = profile?.nama || profile?.username || "Kader";
-  const displayEmail = profile?.email || profile?.nik || "Profil kader";
-  const avatarInitial = displayName.trim().charAt(0).toUpperCase() || "K";
+  const displayName = profile?.nama || profile?.username || "Pengguna";
+  const displayEmail = profile?.email || profile?.nik || "Profil pengguna";
+  const avatarInitial = displayName.trim().charAt(0).toUpperCase() || "P";
 
   const handleLogout = async () => {
     setIsLoggingOut(true);
@@ -114,7 +127,11 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
           
           <div className="space-y-2">
             {menuItems.map((item) => {
-              const isActive = pathname === item.href;
+              const isActive =
+                pathname === item.href ||
+                (item.href !== "/dashboard" && pathname.startsWith(`${item.href}/`)) ||
+                (item.href === "/dashboard/admin/kader" &&
+                  pathname.startsWith("/dashboard/admin"));
               return (
                 <Link
                   key={item.href}
@@ -156,6 +173,11 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
             <div className="overflow-hidden">
               <h4 className="text-sm font-bold text-gray-800 truncate">{displayName}</h4>
               <p className="text-[10px] text-gray-800 truncate">{displayEmail}</p>
+              {profile?.role && (
+                <p className="text-[10px] font-black text-[#0d9488] uppercase tracking-widest mt-0.5">
+                  {profile.role}
+                </p>
+              )}
             </div>
           </div>
 
@@ -179,7 +201,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
               Keluar dari akun?
             </h3>
             <p className="text-xs text-gray-600 leading-relaxed mb-6">
-              Sesi kader akan diakhiri dan Anda perlu login kembali untuk mengakses dashboard.
+              Sesi pengguna akan diakhiri dan Anda perlu login kembali untuk mengakses dashboard.
             </p>
             <div className="flex gap-3">
               <button
