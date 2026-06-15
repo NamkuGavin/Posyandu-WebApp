@@ -7,6 +7,7 @@ import {
   Plus,
   RotateCcw,
   Search,
+  ShieldCheck,
   SlidersHorizontal,
   X,
 } from "lucide-react";
@@ -15,10 +16,12 @@ import Navbar from "@/components/layout/Navbar";
 import Card from "@/components/ui/Card";
 import {
   EmptyState,
+  InfoPanel,
   PageHeader,
   PageStatusState,
 } from "@/components/ui/PageParts";
 import { getBalitaList, getPengukuranList } from "@/lib/api";
+import { useCurrentProfile } from "@/lib/useCurrentProfile";
 import { Balita, Pengukuran } from "@/types";
 
 type GenderFilter = "SEMUA" | Balita["jenisKelamin"];
@@ -118,6 +121,7 @@ export default function DaftarBalitaPage() {
     useState<BalitaFilters>(EMPTY_FILTERS);
   const [draftFilters, setDraftFilters] =
     useState<BalitaFilters>(EMPTY_FILTERS);
+  const { isAdmin, isLoading: isRoleLoading } = useCurrentProfile();
   const currentMonth = new Date().getMonth() + 1;
   const currentYear = new Date().getFullYear();
 
@@ -287,15 +291,29 @@ export default function DaftarBalitaPage() {
           title="Daftar Balita Posyandu"
           description="Cari balita, cek status pengukuran bulan ini, lalu buka detail untuk melihat riwayat lengkap."
           action={
-            <Link
-              href="/dashboard/balita/tambah"
-              className="inline-flex items-center justify-center gap-2 bg-[#1fb999] hover:bg-teal-600 text-white font-black px-4 py-3 rounded-xl shadow-sm transition-colors"
-            >
-              <Plus size={18} />
-              Tambah Balita
-            </Link>
+            isAdmin || isRoleLoading ? (
+              <span className="inline-flex items-center justify-center gap-2 rounded-xl border border-teal-100 bg-[#f0fbf9] px-4 py-3 text-sm font-black text-[#0d9488]">
+                <ShieldCheck size={18} />
+                {isRoleLoading ? "Memuat Akses" : "Mode Baca Saja"}
+              </span>
+            ) : (
+              <Link
+                href="/dashboard/balita/tambah"
+                className="inline-flex items-center justify-center gap-2 bg-[#1fb999] hover:bg-teal-600 text-white font-black px-4 py-3 rounded-xl shadow-sm transition-colors"
+              >
+                <Plus size={18} />
+                Tambah Balita
+              </Link>
+            )
           }
         />
+
+        {isAdmin && (
+          <InfoPanel title="Mode admin baca saja" icon={ShieldCheck}>
+            Admin dapat melihat data balita dan status pengukuran, tetapi tambah,
+            edit, hapus, dan input pengukuran hanya dilakukan oleh kader.
+          </InfoPanel>
+        )}
 
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           <Card className="p-4 rounded-xl">

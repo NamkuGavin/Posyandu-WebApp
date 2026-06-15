@@ -13,6 +13,7 @@ import {
   PageStatusState,
 } from "@/components/ui/PageParts";
 import { getBalitaList, getPengukuranList } from "@/lib/api";
+import { useCurrentProfile } from "@/lib/useCurrentProfile";
 import { Balita, Pengukuran } from "@/types";
 
 function CariBalitaContent() {
@@ -24,6 +25,7 @@ function CariBalitaContent() {
   const [loadState, setLoadState] = useState<"loading" | "success" | "error">(
     "loading",
   );
+  const { isAdmin, isLoading: isRoleLoading } = useCurrentProfile();
   const isMeasurementMode = searchParams.get("mode") === "ukur";
   const currentMonth = new Date().getMonth() + 1;
   const currentYear = new Date().getFullYear();
@@ -107,6 +109,29 @@ function CariBalitaContent() {
     );
   }
 
+  if (isRoleLoading || (isAdmin && isMeasurementMode)) {
+    return (
+      <div className="min-h-screen bg-gray-50 text-black font-sans pb-10">
+        <Navbar title={isMeasurementMode ? "Input Pengukuran" : "Pilih Balita"} />
+        <main className="p-4 sm:p-6 max-w-3xl mx-auto mt-2">
+          <PageStatusState
+            tone={isAdmin && isMeasurementMode ? "error" : "loading"}
+            title={
+              isAdmin && isMeasurementMode
+                ? "Input pengukuran hanya untuk kader"
+                : "Memuat akses pengguna"
+            }
+            description={
+              isAdmin && isMeasurementMode
+                ? "Admin memiliki akses baca saja untuk data operasional. Gunakan daftar balita untuk melihat detail tanpa mengubah data."
+                : "Mengecek role pengguna sebelum menampilkan halaman pencarian."
+            }
+          />
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 text-black font-sans pb-10">
       <Navbar title={isMeasurementMode ? "Input Pengukuran" : "Pilih Balita"} />
@@ -162,7 +187,7 @@ function CariBalitaContent() {
                 key={balita.id}
                 onClick={() =>
                   router.push(
-                    isMeasurementMode
+                    isMeasurementMode && !isAdmin
                       ? `/dashboard/balita/${balita.id}/ukur`
                       : `/dashboard/balita/${balita.id}`,
                   )

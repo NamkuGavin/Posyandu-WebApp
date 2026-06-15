@@ -14,6 +14,7 @@ import {
   Plus,
   Ruler,
   Search,
+  ShieldCheck,
   Users,
   type LucideIcon,
 } from "lucide-react";
@@ -21,8 +22,9 @@ import { useRouter } from "next/navigation";
 import Navbar from "@/components/layout/Navbar";
 import Card from "@/components/ui/Card";
 import { PageStatusState } from "@/components/ui/PageParts";
-import { getBalitaList, getDashboardStats, getPengukuranList } from "@/lib/api";
-import { Balita, BerandaStats, Pengukuran } from "@/types";
+import { getAbsensiList, getBalitaList, getPengukuranList } from "@/lib/api";
+import { useCurrentProfile } from "@/lib/useCurrentProfile";
+import { Absensi, Balita, Pengukuran } from "@/types";
 
 const formatPercent = (value: number) => {
   if (!Number.isFinite(value)) return "0";
@@ -100,11 +102,12 @@ export default function DashboardPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [isFocused, setIsFocused] = useState(false);
   const [balitaList, setBalitaList] = useState<Balita[]>([]);
-  const [stats, setStats] = useState<BerandaStats | null>(null);
   const [currentPengukuran, setCurrentPengukuran] = useState<Pengukuran[]>([]);
+  const [currentAbsensi, setCurrentAbsensi] = useState<Absensi[]>([]);
   const [loadState, setLoadState] = useState<"loading" | "success" | "error">(
     "loading",
   );
+  const { isAdmin, isLoading: isRoleLoading } = useCurrentProfile();
   const router = useRouter();
   const searchRef = useRef<HTMLDivElement>(null);
   const currentMonth = new Date().getMonth() + 1;
@@ -123,14 +126,14 @@ export default function DashboardPage() {
 
     Promise.all([
       getBalitaList(),
-      getDashboardStats(),
       getPengukuranList(currentMonth, currentYear),
+      getAbsensiList(currentMonth, currentYear),
     ])
-      .then(([balitaData, dashboardStats, pengukuranData]) => {
+      .then(([balitaData, pengukuranData, absensiData]) => {
         if (!isActive) return;
         setBalitaList(balitaData);
-        setStats(dashboardStats);
         setCurrentPengukuran(pengukuranData);
+        setCurrentAbsensi(absensiData);
         setLoadState("success");
       })
       .catch((err) => {
@@ -172,10 +175,17 @@ export default function DashboardPage() {
     return !isMeasured;
   });
 
-  const totalBalita = stats?.totalBalita ?? balitaList.length;
-  const hadirBulanIni = stats?.hadirBulanIni ?? 0;
-  const belumHadir =
-    stats?.belumHadir ?? Math.max(totalBalita - hadirBulanIni, 0);
+  const hadirBalitaIds = new Set(
+    currentAbsensi
+      .filter((absensi) => absensi.isHadir)
+      .map((absensi) => absensi.balitaId)
+      .filter(Boolean),
+  );
+  const totalBalita = balitaList.length;
+  const hadirBulanIni = balitaList.filter((balita) =>
+    hadirBalitaIds.has(balita.id),
+  ).length;
+  const belumHadir = Math.max(totalBalita - hadirBulanIni, 0);
   const belumDiukur = belumDiukurList.length;
   const sudahDiukur = Math.max(totalBalita - belumDiukur, 0);
   const attendanceRate =
@@ -187,26 +197,53 @@ export default function DashboardPage() {
       ? parseFloat(((sudahDiukur / totalBalita) * 100).toFixed(1))
       : 0;
   const priorityList = belumDiukurList.slice(0, 4);
-  const quickActions = [
-    {
-      icon: Plus,
-      label: "Tambah Balita",
-      helper: "Registrasi balita baru",
-      onClick: () => router.push("/dashboard/balita/tambah"),
-    },
-    {
-      icon: PencilLine,
-      label: "Input Pengukuran",
-      helper: "Pilih balita yang belum diukur",
-      onClick: () => router.push("/dashboard/cari?mode=ukur"),
-    },
-    {
-      icon: PackageCheck,
-      label: "Absen Bulanan",
-      helper: "Catat hadir atau tidak hadir",
-      onClick: () => router.push("/dashboard/absen"),
-    },
-  ];
+  const quickActions = isAdmin
+    ? [
+        {
+          icon: ShieldCheck,
+          label: "Kelola Kader",
+          helper: "Manajemen akun kader",
+          onClick: () => router.push("/dashboard/admin/kader"),
+          disabled: false,
+        },
+        {
+          icon: Baby,
+          label: "Lihat Balita",
+          helper: "Pantau data balita",
+          onClick: () => router.push("/dashboard/balita"),
+          disabled: false,
+        },
+        {
+          icon: BarChart3,
+          label: "Lihat Laporan",
+          helper: "Pantau rekap periode",
+          onClick: () => router.push("/dashboard/laporan"),
+          disabled: false,
+        },
+      ]
+    : [
+        {
+          icon: Plus,
+          label: "Tambah Balita",
+          helper: "Registrasi balita baru",
+          onClick: () => router.push("/dashboard/balita/tambah"),
+          disabled: isRoleLoading,
+        },
+        {
+          icon: PencilLine,
+          label: "Input Pengukuran",
+          helper: "Pilih balita yang belum diukur",
+          onClick: () => router.push("/dashboard/cari?mode=ukur"),
+          disabled: isRoleLoading,
+        },
+        {
+          icon: PackageCheck,
+          label: "Absen Bulanan",
+          helper: "Catat hadir atau tidak hadir",
+          onClick: () => router.push("/dashboard/absen"),
+          disabled: isRoleLoading,
+        },
+      ];
 
   if (loadState !== "success") {
     return (
@@ -222,8 +259,8 @@ export default function DashboardPage() {
             }
             description={
               loadState === "error"
-                ? "Terjadi gangguan saat mengambil data balita, statistik, atau pengukuran bulan ini. Coba muat ulang halaman."
-                : "Mengambil data balita, statistik, dan status pengukuran bulan ini"
+                ? "Terjadi gangguan saat mengambil data balita, absensi, atau pengukuran bulan ini. Coba muat ulang halaman."
+                : "Mengambil data balita, absensi, dan status pengukuran bulan ini"
             }
           />
         </main>
@@ -403,8 +440,9 @@ export default function DashboardPage() {
                   <button
                     key={action.label}
                     type="button"
-                    onClick={action.onClick}
-                    className="group text-left bg-gray-50 hover:bg-white p-4 rounded-xl transition-all duration-300 hover:shadow-md hover:shadow-teal-50 active:scale-[0.99] border border-gray-100 hover:border-teal-200 cursor-pointer"
+                    onClick={action.disabled ? undefined : action.onClick}
+                    disabled={action.disabled}
+                    className="group text-left bg-gray-50 hover:bg-white p-4 rounded-xl transition-all duration-300 hover:shadow-md hover:shadow-teal-50 active:scale-[0.99] border border-gray-100 hover:border-teal-200 cursor-pointer disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-gray-50 disabled:hover:shadow-none"
                   >
                     <div className="flex items-center justify-between gap-3">
                       <div className="w-11 h-11 rounded-xl bg-white flex items-center justify-center text-[#0d9488] shadow-sm transition-transform duration-300 group-hover:scale-105">
@@ -448,7 +486,11 @@ export default function DashboardPage() {
                   <Card
                     key={item.id}
                     onClick={() =>
-                      router.push(`/dashboard/balita/${item.id}/ukur`)
+                      router.push(
+                        isAdmin
+                          ? `/dashboard/balita/${item.id}`
+                          : `/dashboard/balita/${item.id}/ukur`,
+                      )
                     }
                     className="p-4 rounded-xl flex items-center justify-between group cursor-pointer hover:border-teal-200 hover:shadow-md hover:shadow-teal-50 transition-all shadow-sm bg-white"
                   >
@@ -492,10 +534,16 @@ export default function DashboardPage() {
             {belumDiukurList.length > priorityList.length && (
               <button
                 type="button"
-                onClick={() => router.push("/dashboard/cari?mode=ukur")}
+                onClick={() =>
+                  router.push(
+                    isAdmin ? "/dashboard/balita" : "/dashboard/cari?mode=ukur",
+                  )
+                }
                 className="w-full rounded-xl bg-white border border-gray-100 px-4 py-3 text-sm font-black text-[#0d9488] hover:border-teal-200 transition-colors cursor-pointer"
               >
-                Lihat semua balita belum diukur
+                {isAdmin
+                  ? "Lihat semua data balita"
+                  : "Lihat semua balita belum diukur"}
               </button>
             )}
           </section>

@@ -80,7 +80,7 @@ export default function LoginForm() {
       <div className="flex items-center justify-center gap-2 pt-2">
         <div className="w-1.5 h-1.5 bg-teal-500 rounded-full animate-pulse"></div>
         <p className="text-xs text-gray-500 font-bold tracking-wide">
-          KHUSUS KADER POSYANDU
+          AKSES KADER & ADMIN POSYANDU
         </p>
       </div>
     </form>

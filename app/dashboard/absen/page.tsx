@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   ChevronDown,
   Search,
+  ShieldCheck,
   Users,
   XCircle,
 } from "lucide-react";
@@ -18,6 +19,8 @@ import {
   PageStatusState,
 } from "@/components/ui/PageParts";
 import { getBalitaList, getAbsensiList, bulkUpdateAbsensi } from "@/lib/api";
+import { useCurrentProfile } from "@/lib/useCurrentProfile";
+import { useToast } from "@/components/ui/Toast";
 import { Absensi, Balita } from "@/types";
 
 const months = [
@@ -43,6 +46,8 @@ export default function AbsenBalitaPage() {
   const [loadState, setLoadState] = useState<"loading" | "success" | "error">(
     "loading",
   );
+  const { isAdmin, isLoading: isRoleLoading } = useCurrentProfile();
+  const { warning } = useToast();
   const currentMonth = new Date().getMonth() + 1;
   const currentYear = new Date().getFullYear();
   const monthOptions = months.slice(0, currentMonth);
@@ -77,6 +82,11 @@ export default function AbsenBalitaPage() {
     id: string,
     newStatus: "hadir" | "tidak",
   ) => {
+    if (isAdmin || isRoleLoading) {
+      warning("Admin hanya dapat melihat data absensi tanpa mengubah status.");
+      return;
+    }
+
     const isHadir = newStatus === "hadir";
 
     setAbsenData((prev) => {
@@ -241,6 +251,13 @@ export default function AbsenBalitaPage() {
           bila belum hadir pada periode yang dipilih.
         </InfoPanel>
 
+        {isAdmin && (
+          <InfoPanel title="Mode admin baca saja" icon={ShieldCheck}>
+            Admin dapat memantau absensi per periode, tetapi perubahan status
+            hadir atau tidak hadir hanya dilakukan oleh kader.
+          </InfoPanel>
+        )}
+
         <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-hide">
           {["Semua", "Sudah hadir", "Belum hadir"].map((tab) => (
             <button
@@ -294,22 +311,24 @@ export default function AbsenBalitaPage() {
                     <button
                       type="button"
                       onClick={() => handleStatusChange(balita.id, "hadir")}
+                      disabled={isAdmin || isRoleLoading}
                       className={`px-5 py-3 rounded-xl text-sm font-black transition-all active:scale-95 ${
                         isHadir
                           ? "bg-[#22c55e] text-white shadow-sm shadow-green-100"
                           : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                      }`}
+                      } disabled:cursor-not-allowed disabled:opacity-60`}
                     >
                       Hadir
                     </button>
                     <button
                       type="button"
                       onClick={() => handleStatusChange(balita.id, "tidak")}
+                      disabled={isAdmin || isRoleLoading}
                       className={`px-5 py-3 rounded-xl text-sm font-black transition-all active:scale-95 ${
                         isHadir === false
                           ? "bg-[#ffe4e6] text-[#e11d48] shadow-sm shadow-rose-100"
                           : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                      }`}
+                      } disabled:cursor-not-allowed disabled:opacity-60`}
                     >
                       Tidak
                     </button>

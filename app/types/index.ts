@@ -28,6 +28,7 @@ export interface Balita {
   jenisKelamin: "LAKI_LAKI" | "PEREMPUAN";
   namaWali: string;
   nikWali: string;
+  noKk?: string;
   noWhatsapp: string;
   alamat: string;
   rt: string;
@@ -50,10 +51,25 @@ export interface BerandaStats {
   belumDiukur: number;
 }
 
+export type UserRole = "ADMIN" | "KADER";
+
 export interface KaderProfile {
   id?: string;
   nik?: string;
   username?: string;
   email?: string;
   nama?: string;
+  role?: UserRole | string;
+  createdAt?: string;
+  updatedAt?: string;
 }
+
+export type CreateKaderPayload = {
+  nik: string;
+  username: string;
+  email: string;
+  nama: string;
+  password: string;
+};
+
+export type UpdateKaderPayload = Partial<CreateKaderPayload>;
