@@ -11,6 +11,7 @@ import {
   Baby,
   ChevronDown,
   AlertTriangle,
+  ShieldCheck,
 } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -23,6 +24,7 @@ import {
   getEvaluasi,
   getPengukuranList,
 } from "@/lib/api";
+import { useCurrentProfile } from "@/lib/useCurrentProfile";
 import { Balita, Pengukuran } from "@/types";
 import { useToast } from "@/components/ui/Toast";
 import {
@@ -186,6 +188,7 @@ export default function DetailBalitaPage() {
   const [loadState, setLoadState] = useState<"loading" | "success" | "error">(
     "loading",
   );
+  const { isAdmin, isLoading: isRoleLoading } = useCurrentProfile();
 
   // State untuk konfirmasi hapus inline & Toast
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -338,12 +341,16 @@ export default function DetailBalitaPage() {
           <h1 className="text-lg font-bold text-black absolute left-1/2 -translate-x-1/2 w-full text-center pointer-events-none">
             Detail Balita
           </h1>
-          <button
-            onClick={() => setIsDeleteModalOpen(true)}
-            className="text-red-500 p-2 hover:bg-red-50 rounded-xl transition-colors z-10 active:scale-95 cursor-pointer"
-          >
-            <Trash2 size={20} />
-          </button>
+          {!isRoleLoading && !isAdmin ? (
+            <button
+              onClick={() => setIsDeleteModalOpen(true)}
+              className="text-red-500 p-2 hover:bg-red-50 rounded-xl transition-colors z-10 active:scale-95 cursor-pointer"
+            >
+              <Trash2 size={20} />
+            </button>
+          ) : (
+            <div className="w-10 h-10" />
+          )}
         </div>
 
         <InfoPanel title="Panduan detail balita">
@@ -351,6 +358,13 @@ export default function DetailBalitaPage() {
           memperbaiki biodata atau pengukuran yang sudah ada, dan lihat grafik
           untuk memantau perubahan dari bulan ke bulan.
         </InfoPanel>
+
+        {isAdmin && (
+          <InfoPanel title="Mode admin baca saja" icon={ShieldCheck}>
+            Admin dapat melihat detail, grafik, dan riwayat pengukuran balita,
+            tetapi aksi ukur, edit, absen, dan hapus hanya dilakukan oleh kader.
+          </InfoPanel>
+        )}
 
         {/* Responsive Grid Wrapper */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
@@ -398,24 +412,26 @@ export default function DetailBalitaPage() {
             </Card>
 
             {/* Action Buttons */}
-            <div className="grid grid-cols-3 gap-3">
-              {actionButtons.map((action, idx) => (
-                <button
-                  key={idx}
-                  type="button"
-                  title={action.label}
-                  onClick={() => router.push(action.path)}
-                  className="group flex flex-col items-center justify-center gap-2 bg-white border border-gray-100 py-3 rounded-2xl transition-all duration-300 hover:border-teal-200 hover:shadow-md hover:shadow-teal-50 hover:-translate-y-1 active:scale-95 cursor-pointer"
-                >
-                  <div className="text-[#0d9488] transition-transform duration-300 group-hover:scale-110">
-                    <action.icon size={20} strokeWidth={2.5} />
-                  </div>
-                  <span className="text-[11px] font-bold text-[#0d9488]">
-                    {action.label}
-                  </span>
-                </button>
-              ))}
-            </div>
+            {!isRoleLoading && !isAdmin && (
+              <div className="grid grid-cols-3 gap-3">
+                {actionButtons.map((action, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    title={action.label}
+                    onClick={() => router.push(action.path)}
+                    className="group flex flex-col items-center justify-center gap-2 bg-white border border-gray-100 py-3 rounded-2xl transition-all duration-300 hover:border-teal-200 hover:shadow-md hover:shadow-teal-50 hover:-translate-y-1 active:scale-95 cursor-pointer"
+                  >
+                    <div className="text-[#0d9488] transition-transform duration-300 group-hover:scale-110">
+                      <action.icon size={20} strokeWidth={2.5} />
+                    </div>
+                    <span className="text-[11px] font-bold text-[#0d9488]">
+                      {action.label}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
 
             {/* Analisis AI */}
             <div className="border border-[#1fb999]/30 bg-[#f0fbf9] rounded-xl p-5 relative overflow-hidden">
@@ -583,7 +599,7 @@ export default function DetailBalitaPage() {
       </main>
 
       {/* Delete Confirmation Modal */}
-      {isDeleteModalOpen && balita && (
+      {isDeleteModalOpen && balita && !isAdmin && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-300">
           <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-sm w-full text-center shadow-2xl relative overflow-hidden border border-red-50/50 animate-in zoom-in-95 slide-in-from-bottom-8 duration-300">
             <div className="mx-auto w-14 h-14 bg-rose-50 rounded-full flex items-center justify-center mb-4 text-rose-500">
