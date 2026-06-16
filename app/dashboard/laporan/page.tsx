@@ -178,12 +178,22 @@ export default function LaporanPage() {
     };
   }, [selectedMonth, selectedYearNumber]);
 
-  const totalBalita = balitaList.length;
-  const hadir = absenList.filter((a) => a.isHadir).length;
-  const belumHadir = Math.max(totalBalita - hadir, 0);
   const measuredBalitaIds = new Set(
-    pengukuranList.map((pengukuran) => pengukuran.balitaId).filter(Boolean),
+    pengukuranList
+      .map((pengukuran) => pengukuran.balitaId)
+      .filter((id): id is string => Boolean(id)),
   );
+  const hadirBalitaIds = new Set([
+    ...absenList
+      .filter((absensi) => absensi.isHadir)
+      .map((absensi) => absensi.balitaId)
+      .filter((id): id is string => Boolean(id)),
+    ...Array.from(measuredBalitaIds),
+  ]);
+  const isBalitaHadir = (balitaId: string) => hadirBalitaIds.has(balitaId);
+  const totalBalita = balitaList.length;
+  const hadir = balitaList.filter((balita) => isBalitaHadir(balita.id)).length;
+  const belumHadir = Math.max(totalBalita - hadir, 0);
   const sudahDiukur = balitaList.filter((balita) =>
     measuredBalitaIds.has(balita.id),
   ).length;
@@ -193,9 +203,7 @@ export default function LaporanPage() {
   ).length;
   const lakiLaki = Math.max(totalBalita - perempuan, 0);
   const totalPerluCek = balitaList.filter((balita) => {
-    const isHadir = absenList.find(
-      (absen) => absen.balitaId === balita.id,
-    )?.isHadir;
+    const isHadir = isBalitaHadir(balita.id);
     const isMeasured = measuredBalitaIds.has(balita.id);
 
     return !isHadir || !isMeasured;
@@ -209,9 +217,7 @@ export default function LaporanPage() {
       : 0;
   const followUpList = balitaList
     .map((balita) => {
-      const isHadir = absenList.find(
-        (absen) => absen.balitaId === balita.id,
-      )?.isHadir;
+      const isHadir = isBalitaHadir(balita.id);
       const isMeasured = measuredBalitaIds.has(balita.id);
 
       return {
@@ -230,9 +236,7 @@ export default function LaporanPage() {
       >
     >((acc, balita) => {
       const rt = String(balita.rt || "-");
-      const isHadir = absenList.find(
-        (absen) => absen.balitaId === balita.id,
-      )?.isHadir;
+      const isHadir = isBalitaHadir(balita.id);
       const isMeasured = measuredBalitaIds.has(balita.id);
 
       if (!acc[rt]) {
@@ -305,7 +309,7 @@ export default function LaporanPage() {
             </h1>
             <p className="text-xs font-medium text-gray-500 mt-1">
               Pantau absensi, kelengkapan pengukuran, dan sasaran yang perlu
-              ditindaklanjuti.
+              ditindaklanjuti. Pengukuran otomatis dihitung sebagai hadir.
             </p>
           </div>
 
@@ -403,7 +407,7 @@ export default function LaporanPage() {
           <StatCard
             label="Hadir"
             value={hadir}
-            caption={`${belumHadir} balita belum tercatat hadir.`}
+            caption={`${belumHadir} balita belum hadir atau belum diukur.`}
             icon={ClipboardCheck}
             tone="bg-emerald-50 text-emerald-600"
           />
@@ -432,7 +436,7 @@ export default function LaporanPage() {
                     Kinerja Periode
                   </h4>
                   <p className="text-xs font-medium text-gray-500 mt-1">
-                    Perbandingan sasaran dengan data absensi dan pengukuran.
+                    Pengukuran otomatis dihitung hadir pada periode ini.
                   </p>
                 </div>
                 <BarChart3 size={22} className="text-[#0d9488]" />

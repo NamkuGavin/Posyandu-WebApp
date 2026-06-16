@@ -42,13 +42,21 @@ const GrafikPertumbuhan = ({
   activeTab,
   year,
 }: {
-  riwayat: any[];
+  riwayat: Pengukuran[];
   activeTab: string;
   year: string;
 }) => {
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
-    setMounted(true);
+    let isActive = true;
+
+    Promise.resolve().then(() => {
+      if (isActive) setMounted(true);
+    });
+
+    return () => {
+      isActive = false;
+    };
   }, []);
 
   const keyMap = {
@@ -175,7 +183,89 @@ const GrafikPertumbuhan = ({
 };
 
 const AI_FALLBACK_TEXT =
-  "Insight AI sedang tidak tersedia. Untuk sementara, gunakan grafik dan riwayat pengukuran untuk melihat perkembangan balita.";
+  "**Status**\n- Insight AI sedang tidak tersedia.\n\n**Yang bisa dicek kader**\n- Gunakan grafik dan riwayat pengukuran untuk melihat perkembangan balita.";
+
+function renderInsightInline(text: string) {
+  return text
+    .split(/(\*\*[^*]+\*\*)/g)
+    .filter(Boolean)
+    .map((segment, index) => {
+      const isStrong = segment.startsWith("**") && segment.endsWith("**");
+
+      if (isStrong) {
+        return (
+          <strong
+            key={`${segment}-${index}`}
+            className="font-black text-[#0d9488]"
+          >
+            {segment.slice(2, -2)}
+          </strong>
+        );
+      }
+
+      return <span key={`${segment}-${index}`}>{segment}</span>;
+    });
+}
+
+function FormattedAiInsight({ text }: { text: string }) {
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (lines.length === 0) {
+    return (
+      <p className="text-xs text-gray-800 leading-relaxed mb-4">
+        Insight belum tersedia.
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-3 mb-4">
+      {lines.map((line, index) => {
+        const markdownHeading = line.match(/^#{1,6}\s+(.+)$/)?.[1];
+        const boldHeading = line.match(/^\*\*(.+)\*\*:?$/)?.[1];
+        const heading = markdownHeading ?? boldHeading;
+        const bullet = line.match(/^(?:[-•*]|\d+[.)])\s+(.+)$/);
+
+        if (heading) {
+          return (
+            <div
+              key={`${line}-${index}`}
+              className="inline-flex rounded-full bg-white/80 border border-teal-100 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-[#0d9488]"
+            >
+              {heading}
+            </div>
+          );
+        }
+
+        if (bullet) {
+          return (
+            <div
+              key={`${line}-${index}`}
+              className="flex gap-3 rounded-xl border border-teal-100/80 bg-white/75 p-3 text-left"
+            >
+              <span className="mt-1.5 h-2 w-2 rounded-full bg-[#1fb999] shrink-0" />
+              <p className="text-xs font-semibold leading-relaxed text-gray-800">
+                {renderInsightInline(bullet[1])}
+              </p>
+            </div>
+          );
+        }
+
+        return (
+          <p
+            key={`${line}-${index}`}
+            className="text-xs font-semibold leading-relaxed text-gray-800"
+          >
+            {renderInsightInline(line)}
+          </p>
+        );
+      })}
+    </div>
+  );
+}
 
 export default function DetailBalitaPage() {
   const params = useParams();
@@ -193,7 +283,9 @@ export default function DetailBalitaPage() {
   // State untuk konfirmasi hapus inline & Toast
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [alasanHapus, setAlasanHapus] = useState("Pindah Alamat");
-  const { success } = useToast();
+  const [catatanHapus, setCatatanHapus] = useState("");
+  const [isDeleting, setIsDeleting] = useState(false);
+  const { success, warning } = useToast();
 
   // State untuk interaktivitas
   const [activeChartTab, setActiveChartTab] = useState("Berat");
@@ -250,21 +342,30 @@ export default function DetailBalitaPage() {
 
   useEffect(() => {
     if (!balita) return;
-    setIsAiLoading(true);
+    let isActive = true;
+
+    Promise.resolve().then(() => {
+      if (isActive) setIsAiLoading(true);
+    });
+
     getEvaluasi({
       ...balita,
       pengukuran:
         measurementHistory.length > 0 ? measurementHistory : balita.pengukuran,
     })
       .then((data) => {
-        setAiAnalysisText(data.analisis);
+        if (isActive) setAiAnalysisText(data.analisis);
       })
       .catch(() => {
-        setAiAnalysisText(AI_FALLBACK_TEXT);
+        if (isActive) setAiAnalysisText(AI_FALLBACK_TEXT);
       })
       .finally(() => {
-        setIsAiLoading(false);
+        if (isActive) setIsAiLoading(false);
       });
+
+    return () => {
+      isActive = false;
+    };
   }, [balita, measurementHistory]);
 
   if (loadState !== "success" || !balita || balita.id !== id) {
@@ -324,6 +425,17 @@ export default function DetailBalitaPage() {
       path: `/dashboard/absen`,
     },
   ];
+  const isPermintaanWali = alasanHapus === "Permintaan wali";
+  const trimmedCatatanHapus = catatanHapus.trim();
+  const isDeleteDisabled =
+    isDeleting || (isPermintaanWali && trimmedCatatanHapus.length === 0);
+
+  const closeDeleteModal = () => {
+    setIsDeleteModalOpen(false);
+    setAlasanHapus("Pindah Alamat");
+    setCatatanHapus("");
+    setIsDeleting(false);
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 text-black font-sans pb-10">
@@ -449,9 +561,7 @@ export default function DetailBalitaPage() {
                   <div className="h-3 bg-teal-100 rounded w-4/6"></div>
                 </div>
               ) : (
-                <p className="text-xs text-gray-800 leading-relaxed mb-4">
-                  {aiAnalysisText}
-                </p>
+                <FormattedAiInsight text={aiAnalysisText} />
               )}
 
               <p className="text-[10px] italic text-[#0d9488] opacity-80">
@@ -623,7 +733,12 @@ export default function DetailBalitaPage() {
               {["Pindah Alamat", "Usia > 60", "Permintaan wali"].map((opt) => (
                 <div
                   key={opt}
-                  onClick={() => setAlasanHapus(opt)}
+                  onClick={() => {
+                    setAlasanHapus(opt);
+                    if (opt !== "Permintaan wali") {
+                      setCatatanHapus("");
+                    }
+                  }}
                   className={`flex items-center justify-between p-3.5 rounded-xl border cursor-pointer transition-all active:scale-[0.98] ${
                     alasanHapus === opt
                       ? "border-rose-400 bg-rose-50/30"
@@ -644,6 +759,33 @@ export default function DetailBalitaPage() {
                   </div>
                 </div>
               ))}
+              {isPermintaanWali && (
+                <div className="space-y-2">
+                  <label
+                    htmlFor="catatan-hapus-balita"
+                    className="text-xs font-bold text-gray-500 ml-1"
+                  >
+                    Catatan permintaan wali
+                  </label>
+                  <textarea
+                    id="catatan-hapus-balita"
+                    value={catatanHapus}
+                    onChange={(event) => setCatatanHapus(event.target.value)}
+                    maxLength={200}
+                    rows={3}
+                    placeholder="Contoh: wali meminta data dihapus karena pindah domisili"
+                    className="w-full resize-none rounded-xl border border-gray-200 bg-white p-3 text-xs font-semibold text-black outline-none transition-all focus:border-rose-300 focus:ring-2 focus:ring-rose-100 placeholder:text-gray-400"
+                  />
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-[10px] font-semibold text-gray-500">
+                      Wajib diisi untuk alasan permintaan wali.
+                    </p>
+                    <p className="text-[10px] font-bold text-gray-400">
+                      {catatanHapus.length}/200
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Warning Message */}
@@ -658,14 +800,17 @@ export default function DetailBalitaPage() {
             <div className="flex gap-4">
               <button
                 type="button"
-                onClick={() => setIsDeleteModalOpen(false)}
+                onClick={closeDeleteModal}
                 className="flex-1 bg-white hover:bg-gray-50 active:scale-[0.99] border border-gray-300 text-gray-700 font-bold py-3 px-6 rounded-2xl shadow-sm transition-all duration-300 text-center cursor-pointer text-xs"
               >
                 Batal
               </button>
               <button
                 type="button"
+                disabled={isDeleteDisabled}
                 onClick={async () => {
+                  if (isDeleteDisabled) return;
+
                   try {
                     const alasanMap: Record<string, string> = {
                       "Pindah Alamat": "PINDAH_ALAMAT",
@@ -674,17 +819,38 @@ export default function DetailBalitaPage() {
                     };
                     const mappedAlasan =
                       alasanMap[alasanHapus] || "PINDAH_ALAMAT";
-                    await deleteBalita(id, mappedAlasan);
+
+                    if (
+                      mappedAlasan === "PERMINTAAN_WALI" &&
+                      !trimmedCatatanHapus
+                    ) {
+                      warning("Catatan permintaan wali wajib diisi.");
+                      return;
+                    }
+
+                    setIsDeleting(true);
+                    await deleteBalita(
+                      id,
+                      mappedAlasan,
+                      mappedAlasan === "PERMINTAAN_WALI"
+                        ? trimmedCatatanHapus
+                        : undefined,
+                    );
                     success(`Data balita ${balita.nama} berhasil dihapus!`);
-                    setIsDeleteModalOpen(false);
+                    closeDeleteModal();
                     router.push("/dashboard/balita");
-                  } catch (err: any) {
-                    alert(err.message);
+                  } catch (err: unknown) {
+                    alert(
+                      err instanceof Error
+                        ? err.message
+                        : "Gagal menghapus balita",
+                    );
+                    setIsDeleting(false);
                   }
                 }}
-                className="flex-1 bg-rose-600 hover:bg-rose-700 active:scale-[0.99] text-white font-bold py-3.5 px-6 rounded-2xl shadow-lg shadow-rose-600/15 transition-all duration-300 text-center cursor-pointer text-xs"
+                className="flex-1 bg-rose-600 hover:bg-rose-700 active:scale-[0.99] text-white font-bold py-3.5 px-6 rounded-2xl shadow-lg shadow-rose-600/15 transition-all duration-300 text-center cursor-pointer text-xs disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-rose-600"
               >
-                Ya, Hapus
+                {isDeleting ? "Menghapus..." : "Ya, Hapus"}
               </button>
             </div>
           </div>
