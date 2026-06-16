@@ -335,12 +335,21 @@ export async function updatePengukuranBalita(
   }
 }
 
-export async function deleteBalita(id: string, alasan: string): Promise<void> {
+export async function deleteBalita(
+  id: string,
+  alasan: string,
+  catatan?: string,
+): Promise<void> {
   await assertOperationalWriteAccess();
+
+  const payload = {
+    alasan,
+    ...(catatan?.trim() ? { catatan: catatan.trim() } : {}),
+  };
 
   const res = await authFetch(`/balita/${id}`, {
     method: "DELETE",
-    body: JSON.stringify({ alasan }),
+    body: JSON.stringify(payload),
   });
   if (!res.ok) {
     throw new Error(await getApiError(res, "Gagal menghapus balita"));

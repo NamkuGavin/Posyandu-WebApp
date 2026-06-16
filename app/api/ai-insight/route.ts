@@ -34,7 +34,7 @@ const MONTH_NAMES = [
 ];
 
 const AI_UNAVAILABLE_MESSAGE =
-  "Insight AI sedang tidak tersedia. Untuk sementara, gunakan grafik dan riwayat pengukuran untuk melihat perubahan berat badan, panjang/tinggi badan, lingkar kepala, dan lingkar lengan.";
+  "**Status**\n- Insight AI sedang tidak tersedia.\n\n**Yang bisa dicek kader**\n- Gunakan grafik dan riwayat pengukuran untuk melihat perubahan **berat badan**, **panjang/tinggi badan**, **lingkar kepala**, dan **lingkar lengan**.";
 
 function calculateAgeInMonths(birthDate?: string) {
   if (!birthDate) return null;
@@ -130,7 +130,14 @@ function buildPrompt(balita: InsightBalita) {
           `Fokus 3 data terakhir jika ada: ${latestThree
             .map(formatMeasurement)
             .join(" | ") || "belum ada"}.`,
-          "Format jawaban 3-5 kalimat. Sebutkan pengamatan utama, hal yang perlu dipantau, dan tindak lanjut yang aman untuk kader.",
+          "Format jawaban wajib seperti ini, singkat, mudah dipindai, dan tanpa paragraf panjang:",
+          "**Ringkasan**",
+          "- 1 poin pengamatan utama. Bold-kan kata penting dengan **teks**.",
+          "**Perlu Dipantau**",
+          "- 1-2 poin hal yang perlu diperhatikan kader.",
+          "**Tindak Lanjut**",
+          "- 1-2 poin langkah aman untuk kader atau wali.",
+          "Jangan memakai tabel. Jangan membuat diagnosis atau status gizi pasti.",
         ].join("\n"),
       },
     ],
@@ -144,7 +151,10 @@ export async function POST(request: Request) {
 
     if (!balita) {
       return NextResponse.json(
-        { analisis: "Data balita tidak ditemukan untuk dibuat insight." },
+        {
+          analisis:
+            "**Status**\n- Data balita tidak ditemukan untuk dibuat insight.",
+        },
         { status: 400 },
       );
     }
@@ -154,7 +164,7 @@ export async function POST(request: Request) {
     if (!prompt.hasMeasurements) {
       return NextResponse.json({
         analisis:
-          "Belum ada riwayat pengukuran yang bisa dianalisis. Isi data pengukuran terlebih dahulu, lalu pantau grafik dan riwayat untuk melihat perubahan pertumbuhan balita.",
+          "**Status**\n- Belum ada riwayat pengukuran yang bisa dianalisis.\n\n**Tindak Lanjut**\n- Isi data pengukuran terlebih dahulu.\n- Pantau grafik dan riwayat untuk melihat perubahan **berat badan**, **tinggi/panjang badan**, dan **lingkar kepala**.",
         source: "placeholder",
       });
     }
