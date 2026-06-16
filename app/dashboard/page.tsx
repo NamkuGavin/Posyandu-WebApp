@@ -161,7 +161,9 @@ export default function DashboardPage() {
   }, []);
 
   const measuredBalitaIds = new Set(
-    currentPengukuran.map((pengukuran) => pengukuran.balitaId).filter(Boolean),
+    currentPengukuran
+      .map((pengukuran) => pengukuran.balitaId)
+      .filter((id): id is string => Boolean(id)),
   );
 
   const filteredSuggestions = balitaList
@@ -175,12 +177,13 @@ export default function DashboardPage() {
     return !isMeasured;
   });
 
-  const hadirBalitaIds = new Set(
-    currentAbsensi
+  const hadirBalitaIds = new Set([
+    ...currentAbsensi
       .filter((absensi) => absensi.isHadir)
       .map((absensi) => absensi.balitaId)
-      .filter(Boolean),
-  );
+      .filter((id): id is string => Boolean(id)),
+    ...Array.from(measuredBalitaIds),
+  ]);
   const totalBalita = balitaList.length;
   const hadirBulanIni = balitaList.filter((balita) =>
     hadirBalitaIds.has(balita.id),
@@ -239,7 +242,7 @@ export default function DashboardPage() {
         {
           icon: PackageCheck,
           label: "Absen Bulanan",
-          helper: "Catat hadir atau tidak hadir",
+          helper: "Koreksi absensi manual",
           onClick: () => router.push("/dashboard/absen"),
           disabled: isRoleLoading,
         },
@@ -283,8 +286,8 @@ export default function DashboardPage() {
                 Pemantauan Bulan Ini
               </h1>
               <p className="text-sm sm:text-base font-medium text-teal-50 mt-2 max-w-xl leading-relaxed">
-                Mulai dari cari balita, input pengukuran, absen bulanan, sampai
-                lihat laporan.
+                Mulai dari cari balita, input pengukuran, koreksi absensi,
+                sampai lihat laporan.
               </p>
             </div>
             <div className="bg-white/15 px-3 py-2 rounded-xl flex items-center gap-2 text-xs font-bold tracking-wide whitespace-nowrap self-start">
@@ -373,7 +376,7 @@ export default function DashboardPage() {
           <SummaryCard
             label="Hadir"
             value={hadirBulanIni}
-            helper={`${belumHadir} belum hadir`}
+            helper={`${belumHadir} belum tercatat hadir`}
             icon={ClipboardCheck}
             tone="bg-emerald-50 text-emerald-600"
           />
@@ -402,7 +405,8 @@ export default function DashboardPage() {
                     Cakupan Bulanan
                   </h2>
                   <p className="text-sm font-medium text-gray-500 mt-1">
-                    Absensi dan pengukuran periode {currentPeriod}.
+                    Pengukuran otomatis dihitung sebagai hadir periode{" "}
+                    {currentPeriod}.
                   </p>
                 </div>
                 <BarChart3 size={24} className="text-[#0d9488]" />

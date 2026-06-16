@@ -526,7 +526,7 @@ export default function UkurBalitaPage() {
     };
 
     await addPengukuran(id, newMeasurement);
-    success("Pengukuran berhasil disimpan!");
+    success("Pengukuran berhasil disimpan dan kehadiran otomatis tercatat.");
     router.push(`/dashboard/balita/${id}`);
   };
 
@@ -552,7 +552,8 @@ export default function UkurBalitaPage() {
         <InfoPanel title="Cara mengisi pengukuran">
           Pilih bulan pengukuran, lalu isi angka sesuai hasil ukur. Jika bulan
           sudah pernah diukur, field dikunci dan perubahan dilakukan melalui
-          Edit Data Balita.
+          Edit Data Balita. Saat disimpan, kehadiran periode tersebut otomatis
+          tercatat.
         </InfoPanel>
 
         <Card className="p-5 bg-white border border-gray-100 shadow-sm rounded-xl flex items-center gap-4">
