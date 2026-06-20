@@ -10,7 +10,6 @@ import {
   getBalitaById,
   updateBalita,
   updatePengukuranBalita,
-  getPengukuranList,
 } from "@/lib/api";
 import { useCurrentProfile } from "@/lib/useCurrentProfile";
 import { Balita, Pengukuran } from "@/types";
@@ -131,6 +130,17 @@ function getLatestAvailableMonth(
   return monthOptions[monthOptions.length - 1]?.value ?? fallback;
 }
 
+function getMeasurementsByPeriod(measurements: Pengukuran[] = []) {
+  return measurements.reduce<Record<string, Pengukuran>>(
+    (result, measurement) => {
+      result[getMeasurementPeriodKey(measurement.tahun, measurement.bulan)] =
+        measurement;
+      return result;
+    },
+    {},
+  );
+}
+
 function getMeasurementFieldValues(measurement?: Pengukuran | null) {
   return {
     panjang: measurement?.tinggiBadan?.toString() || "",
@@ -198,9 +208,6 @@ export default function EditBalitaPage() {
   const [loadState, setLoadState] = useState<"loading" | "success" | "error">(
     "loading",
   );
-  const [measurementLoadState, setMeasurementLoadState] = useState<
-    "loading" | "success" | "error"
-  >("loading");
   const { success, warning, error } = useToast();
   const currentMonth = new Date().getMonth() + 1;
   const currentYear = new Date().getFullYear();
@@ -251,7 +258,11 @@ export default function EditBalitaPage() {
     let isActive = true;
 
     Promise.resolve().then(() => {
-      if (isActive) setLoadState("loading");
+      if (!isActive) return;
+      setLoadState("loading");
+      setMeasurementByPeriod({});
+      setSelectedMeasurementYear(currentYear);
+      setSelectedMeasurementMonth(currentMonth);
     });
 
     getBalitaById(id)
@@ -263,6 +274,21 @@ export default function EditBalitaPage() {
         }
 
         setBalita(found);
+        const measurementsByPeriod = getMeasurementsByPeriod(
+          found.pengukuran ?? [],
+        );
+        const currentMeasurement =
+          measurementsByPeriod[
+            getMeasurementPeriodKey(currentYear, currentMonth)
+          ];
+        const currentMeasurementFields =
+          getMeasurementFieldValues(currentMeasurement);
+
+        setMeasurementByPeriod(measurementsByPeriod);
+        setPanjangPengukuran(currentMeasurementFields.panjang);
+        setBeratPengukuran(currentMeasurementFields.berat);
+        setLingkarKepalaPengukuran(currentMeasurementFields.lingkarKepala);
+        setLingkarLenganPengukuran(currentMeasurementFields.lingkarLengan);
         setName(found.nama || "");
         setMom(found.namaWali || "");
         setAddress(found.alamat || "");
@@ -284,107 +310,28 @@ export default function EditBalitaPage() {
     return () => {
       isActive = false;
     };
-  }, [id]);
-
-  useEffect(() => {
-    let isActive = true;
-
-    Promise.resolve().then(() => {
-      if (!isActive) return;
-      setMeasurementByPeriod({});
-      setSelectedMeasurementYear(currentYear);
-      setSelectedMeasurementMonth(currentMonth);
-      setMeasurementLoadState("loading");
-    });
-
-    return () => {
-      isActive = false;
-    };
   }, [currentMonth, currentYear, id]);
 
   useEffect(() => {
     let isActive = true;
-
-    if (!birthPeriod || !hasAvailablePeriod) {
-      Promise.resolve().then(() => {
-        if (isActive) setMeasurementLoadState("loading");
-      });
-      return () => {
-        isActive = false;
-      };
-    }
-
-    const validMonth = monthOptions.some(
-      (month) => month.value === selectedMeasurementMonth,
+    const fields = getMeasurementFieldValues(
+      measurementByPeriod[selectedMeasurementPeriodKey],
     );
 
-    if (!validMonth) {
-      Promise.resolve().then(() => {
-        if (isActive) setMeasurementLoadState("loading");
-      });
-      return () => {
-        isActive = false;
-      };
-    }
-
-    if (selectedMeasurementPeriodKey in measurementByPeriod) {
-      Promise.resolve().then(() => {
-        if (!isActive) return;
-
-        const fields = getMeasurementFieldValues(
-          measurementByPeriod[selectedMeasurementPeriodKey],
-        );
-        setPanjangPengukuran(fields.panjang);
-        setBeratPengukuran(fields.berat);
-        setLingkarKepalaPengukuran(fields.lingkarKepala);
-        setLingkarLenganPengukuran(fields.lingkarLengan);
-        setMeasurementLoadState("success");
-      });
-      return () => {
-        isActive = false;
-      };
-    }
-
     Promise.resolve().then(() => {
-      if (isActive) setMeasurementLoadState("loading");
+      if (!isActive) return;
+      setPanjangPengukuran(fields.panjang);
+      setBeratPengukuran(fields.berat);
+      setLingkarKepalaPengukuran(fields.lingkarKepala);
+      setLingkarLenganPengukuran(fields.lingkarLengan);
     });
-
-    getPengukuranList(selectedMeasurementMonth, selectedMeasurementYear)
-      .then((list) => {
-        if (!isActive) return;
-        const measurement =
-          list.find((pengukuran) => pengukuran.balitaId === id) ?? null;
-        const fields = getMeasurementFieldValues(measurement);
-
-        setMeasurementByPeriod((prev) => ({
-          ...prev,
-          [selectedMeasurementPeriodKey]: measurement,
-        }));
-        setPanjangPengukuran(fields.panjang);
-        setBeratPengukuran(fields.berat);
-        setLingkarKepalaPengukuran(fields.lingkarKepala);
-        setLingkarLenganPengukuran(fields.lingkarLengan);
-        setMeasurementLoadState("success");
-      })
-      .catch((err) => {
-        console.error(err);
-        if (isActive) setMeasurementLoadState("error");
-      });
 
     return () => {
       isActive = false;
     };
   }, [
-    birthPeriod,
-    currentMonth,
-    currentYear,
-    hasAvailablePeriod,
-    id,
     measurementByPeriod,
-    monthOptions,
-    selectedMeasurementMonth,
     selectedMeasurementPeriodKey,
-    selectedMeasurementYear,
   ]);
 
   useEffect(() => {
@@ -430,17 +377,6 @@ export default function EditBalitaPage() {
   ]);
 
   const selectedMeasurement = measurementByPeriod[selectedMeasurementPeriodKey];
-  const isMeasurementStatusLoaded =
-    measurementLoadState === "success" &&
-    selectedMeasurementPeriodKey in measurementByPeriod;
-
-  const applyMeasurementFields = (measurement?: Pengukuran | null) => {
-    const fields = getMeasurementFieldValues(measurement);
-    setPanjangPengukuran(fields.panjang);
-    setBeratPengukuran(fields.berat);
-    setLingkarKepalaPengukuran(fields.lingkarKepala);
-    setLingkarLenganPengukuran(fields.lingkarLengan);
-  };
 
   if (loadState !== "success" || !balita || balita.id !== id) {
     return (
@@ -456,8 +392,8 @@ export default function EditBalitaPage() {
             }
             description={
               loadState === "error"
-                ? "Terjadi gangguan saat mengambil data balita. Coba muat ulang halaman."
-                : "Mengambil data balita sebelum membuka form edit."
+                ? "Terjadi gangguan saat mengambil data balita dan riwayat pengukurannya. Coba muat ulang halaman."
+                : "Mengambil data balita dan seluruh riwayat pengukuran."
             }
           />
         </main>
@@ -502,33 +438,9 @@ export default function EditBalitaPage() {
     );
   }
 
-  if (!isMeasurementStatusLoaded) {
-    return (
-      <div className="min-h-screen bg-gray-50 text-black font-sans pb-10">
-        <Navbar title="Edit Data Balita" />
-        <main className="p-4 sm:p-6 max-w-4xl mx-auto mt-2">
-          <PageStatusState
-            tone={measurementLoadState === "error" ? "error" : "loading"}
-            title={
-              measurementLoadState === "error"
-                ? "Data pengukuran belum bisa dicek"
-                : "Mengecek data pengukuran"
-            }
-            description={
-              measurementLoadState === "error"
-                ? "Terjadi gangguan saat mengambil data pengukuran periode ini. Coba muat ulang halaman."
-                : `Mengambil data pengukuran ${selectedMonthName} ${selectedMeasurementYear}.`
-            }
-          />
-        </main>
-      </div>
-    );
-  }
-
   const ageInMonths = calculateAgeInMonths(balita.tglLahir);
   const isLilaDisabled = ageInMonths !== null && ageInMonths <= 6;
-  const isMeasurementMissing =
-    !isMeasurementStatusLoaded || !selectedMeasurement;
+  const isMeasurementMissing = !selectedMeasurement;
 
   const handleSave = async () => {
     if (isAdmin) {
@@ -617,13 +529,6 @@ export default function EditBalitaPage() {
     let pengukuranId: string | null = null;
 
     if (hasMeasurementChanges) {
-      if (!isMeasurementStatusLoaded) {
-        warning(
-          "Status pengukuran periode ini masih dicek. Coba lagi sebentar.",
-        );
-        return;
-      }
-
       if (!selectedMeasurement) {
         warning(
           `Belum ada data pengukuran untuk ${selectedMonthName} ${selectedMeasurementYear}.`,
@@ -928,48 +833,48 @@ export default function EditBalitaPage() {
                     Bulan Pengukuran
                   </label>
                   <div className="relative">
-                  <select
-                    value={selectedMeasurementMonth}
-                    onChange={(e) => {
-                      const month = Number(e.target.value);
-                      const periodKey = getMeasurementPeriodKey(
-                        selectedMeasurementYear,
-                        month,
-                      );
+                    <select
+                      value={selectedMeasurementMonth}
+                      onChange={(e) =>
+                        setSelectedMeasurementMonth(Number(e.target.value))
+                      }
+                      className="w-full appearance-none bg-white border border-gray-200 rounded-xl p-3.5 text-sm font-bold text-black focus:outline-none focus:ring-1 focus:ring-teal-500 shadow-sm cursor-pointer"
+                    >
+                      {monthOptions.map((month) => {
+                        const periodKey = getMeasurementPeriodKey(
+                          selectedMeasurementYear,
+                          month.value,
+                        );
+                        const isMeasured = Boolean(
+                          measurementByPeriod[periodKey],
+                        );
 
-                      setSelectedMeasurementMonth(month);
-                      applyMeasurementFields(measurementByPeriod[periodKey]);
-                    }}
-                    className="w-full appearance-none bg-white border border-gray-200 rounded-xl p-3.5 text-sm font-bold text-black focus:outline-none focus:ring-1 focus:ring-teal-500 shadow-sm cursor-pointer"
-                  >
-                    {monthOptions.map((month) => (
-                      <option key={month.value} value={month.value}>
-                        {month.label} {selectedMeasurementYear}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown
-                    size={20}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 text-black pointer-events-none"
-                  />
+                        return (
+                          <option key={periodKey} value={month.value}>
+                            {month.label} {selectedMeasurementYear}
+                            {` - ${isMeasured ? "Sudah diukur" : "Belum diukur"}`}
+                          </option>
+                        );
+                      })}
+                    </select>
+                    <ChevronDown
+                      size={20}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 text-black pointer-events-none"
+                    />
                   </div>
                 </div>
               </div>
 
               <div
                 className={`rounded-xl border p-3.5 text-xs font-bold ${
-                  !isMeasurementStatusLoaded
-                    ? "border-gray-100 bg-gray-50 text-gray-500"
-                    : selectedMeasurement
-                      ? "border-teal-100 bg-[#f0fbf9] text-[#0d9488]"
-                      : "border-orange-100 bg-[#fff5ea] text-orange-600"
+                  selectedMeasurement
+                    ? "border-teal-100 bg-[#f0fbf9] text-[#0d9488]"
+                    : "border-orange-100 bg-[#fff5ea] text-orange-600"
                 }`}
               >
-                {!isMeasurementStatusLoaded
-                  ? `Mengecek data pengukuran ${selectedMonthName} ${selectedMeasurementYear}...`
-                  : selectedMeasurement
-                    ? `Data pengukuran ${selectedMonthName} ${selectedMeasurementYear} ditemukan.`
-                    : `Belum ada data pengukuran untuk ${selectedMonthName} ${selectedMeasurementYear}. Input pengukuran baru melalui halaman Input Pengukuran.`}
+                {selectedMeasurement
+                  ? `Data pengukuran ${selectedMonthName} ${selectedMeasurementYear} ditemukan.`
+                  : `Belum ada data pengukuran untuk ${selectedMonthName} ${selectedMeasurementYear}. Input pengukuran baru melalui halaman Input Pengukuran.`}
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
