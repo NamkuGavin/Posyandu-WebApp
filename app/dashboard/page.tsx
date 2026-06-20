@@ -273,7 +273,7 @@ export default function DashboardPage() {
           <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6 relative z-10">
             <div>
               <p className="text-teal-50 text-xs font-black uppercase tracking-widest mb-2">
-                Posyandu Sidorejo Kidul
+                Posyandu ILP Ceria 9
               </p>
               <h1 className="text-2xl sm:text-3xl font-black">
                 Pemantauan Bulan Ini
