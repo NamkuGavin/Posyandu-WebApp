@@ -22,7 +22,7 @@ export default function LoginPage() {
               Khusus Kader Posyandu
             </p>
             <h1 className="text-3xl sm:text-4xl font-black text-gray-950 mt-2">
-              Mitra Posyandu
+              Posyandu ILP Ceria 9
             </h1>
             <p className="text-base font-medium text-gray-600 leading-relaxed mt-3 max-w-xl mx-auto lg:mx-0">
               Bantu kader mencatat absensi, pengukuran, dan laporan pertumbuhan

@@ -309,8 +309,7 @@ export default function TambahBalitaPage() {
         savedPhoneLength < PHONE_MIN_LENGTH ||
         savedPhoneLength > PHONE_MAX_LENGTH
       ) {
-        newErrors.whatsapp =
-          "Nomor WhatsApp harus 10-13 digit jika diisi";
+        newErrors.whatsapp = "Nomor WhatsApp harus 10-13 digit jika diisi";
       } else if (!PHONE_NUMBER_PATTERN.test(whatsappPayload)) {
         newErrors.whatsapp =
           "Nomor WhatsApp harus mengikuti format 08, 62, atau +62";
@@ -348,17 +347,11 @@ export default function TambahBalitaPage() {
     }
 
     // Optional measurement validation
-    if (
-      formData.panjangLahir &&
-      parseFloat(formData.panjangLahir) <= 0
-    ) {
+    if (formData.panjangLahir && parseFloat(formData.panjangLahir) <= 0) {
       newErrors.panjangLahir = "Panjang lahir harus lebih besar dari 0";
     }
 
-    if (
-      formData.beratLahir &&
-      parseFloat(formData.beratLahir) < 0.5
-    ) {
+    if (formData.beratLahir && parseFloat(formData.beratLahir) < 0.5) {
       newErrors.beratLahir = "Berat lahir minimal 0,5 kg";
     }
 
@@ -374,18 +367,12 @@ export default function TambahBalitaPage() {
       newErrors.usiaKehamilan = "Usia kehamilan harus lebih besar dari 0";
     }
 
-    if (
-      formData.panjangSekarang &&
-      parseFloat(formData.panjangSekarang) <= 0
-    ) {
+    if (formData.panjangSekarang && parseFloat(formData.panjangSekarang) <= 0) {
       newErrors.panjangSekarang =
         "Panjang/Tinggi sekarang harus lebih besar dari 0";
     }
 
-    if (
-      formData.beratSekarang &&
-      parseFloat(formData.beratSekarang) <= 0
-    ) {
+    if (formData.beratSekarang && parseFloat(formData.beratSekarang) <= 0) {
       newErrors.beratSekarang = "Berat sekarang harus lebih besar dari 0";
     }
 
@@ -509,9 +496,7 @@ export default function TambahBalitaPage() {
           setShowSuccessModal(true);
         } catch (err: unknown) {
           alert(
-            err instanceof Error
-              ? err.message
-              : "Gagal mendaftarkan balita.",
+            err instanceof Error ? err.message : "Gagal mendaftarkan balita.",
           );
         }
       }
@@ -538,7 +523,9 @@ export default function TambahBalitaPage() {
           <PageStatusState
             tone={isAdmin ? "error" : "loading"}
             title={
-              isAdmin ? "Tambah balita hanya untuk kader" : "Memuat akses pengguna"
+              isAdmin
+                ? "Tambah balita hanya untuk kader"
+                : "Memuat akses pengguna"
             }
             description={
               isAdmin
@@ -674,9 +661,7 @@ export default function TambahBalitaPage() {
                 </label>
                 <div
                   className={`bg-gray-100 p-1.5 rounded-2xl flex gap-1 border ${
-                    errors.jenisKelamin
-                      ? "border-rose-400"
-                      : "border-gray-50"
+                    errors.jenisKelamin ? "border-rose-400" : "border-gray-50"
                   }`}
                 >
                   <button
@@ -1234,7 +1219,7 @@ export default function TambahBalitaPage() {
               </h3>
               <p className="text-xs text-gray-600 leading-relaxed mb-6">
                 Data balita <strong>{formData.namaBalita}</strong> telah
-                berhasil ditambahkan ke Posyandu Sidorejo Kidul.
+                berhasil ditambahkan ke Posyandu ILP Ceria 9.
               </p>
 
               {/* Info Recap */}
