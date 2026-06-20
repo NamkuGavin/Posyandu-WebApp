@@ -13,7 +13,6 @@ import {
   ChevronDown,
   AlertTriangle,
   Database,
-  ExternalLink,
   Lightbulb,
   ShieldAlert,
   ShieldCheck,
@@ -27,6 +26,7 @@ import Card from "@/components/ui/Card";
 import { InfoPanel, PageStatusState } from "@/components/ui/PageParts";
 import { getBalitaById, deleteBalita, getEvaluasi } from "@/lib/api";
 import { useCurrentProfile } from "@/lib/useCurrentProfile";
+import { isCompletedMeasurement } from "@/lib/measurement-status";
 import {
   Balita,
   GrowthInsightResponse,
@@ -319,7 +319,7 @@ export default function DetailBalitaPage() {
 
     getEvaluasi({
       ...balita,
-      pengukuran: balita.pengukuran,
+      pengukuran: balita.pengukuran?.filter(isCompletedMeasurement),
     })
       .then((data) => {
         if (isActive) setAiInsight(data);
@@ -359,9 +359,14 @@ export default function DetailBalitaPage() {
     );
   }
 
-  const pengukuranHistory = balita.pengukuran ?? [];
+  const pengukuranHistory = (balita.pengukuran ?? []).filter(
+    isCompletedMeasurement,
+  );
   const isMeasuredThisMonth = pengukuranHistory.some(
-    (p) => p.bulan === currentMonth && p.tahun === currentYear,
+    (p) =>
+      p.bulan === currentMonth &&
+      p.tahun === currentYear &&
+      isCompletedMeasurement(p),
   );
   const activeInsightSection = aiInsight?.sections.find(
     (section) => section.id === activeInsightTab,

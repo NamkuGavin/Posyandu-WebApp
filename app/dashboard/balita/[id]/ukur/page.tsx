@@ -6,8 +6,13 @@ import { useParams, useRouter } from "next/navigation";
 import Navbar from "@/components/layout/Navbar";
 import Card from "@/components/ui/Card";
 import { InfoPanel, PageStatusState } from "@/components/ui/PageParts";
-import { getBalitaById, addPengukuran } from "@/lib/api";
+import {
+  getBalitaById,
+  addPengukuran,
+  updatePengukuranBalita,
+} from "@/lib/api";
 import { useCurrentProfile } from "@/lib/useCurrentProfile";
+import { isCompletedMeasurement } from "@/lib/measurement-status";
 import { Balita, Pengukuran } from "@/types";
 
 const MONTH_NAMES = [
@@ -214,7 +219,7 @@ export default function UkurBalitaPage() {
   );
   const selectedMeasurement = measurementByPeriod[selectedPeriodKey];
   const selectedMonthName = MONTH_NAMES[selectedMonth - 1] ?? "";
-  const isMeasurementLocked = Boolean(selectedMeasurement);
+  const isMeasurementLocked = isCompletedMeasurement(selectedMeasurement);
 
   useEffect(() => {
     let isActive = true;
@@ -315,7 +320,7 @@ export default function UkurBalitaPage() {
   useEffect(() => {
     let isActive = true;
 
-    if (selectedMeasurement) {
+    if (isCompletedMeasurement(selectedMeasurement)) {
       Promise.resolve().then(() => {
         if (isActive) setIsMeasuredDialogOpen(true);
       });
@@ -393,8 +398,6 @@ export default function UkurBalitaPage() {
       return;
     }
 
-    const isOver6Months = ageInMonths !== null && ageInMonths > 6;
-
     if (isMeasurementLocked) {
       setIsMeasuredDialogOpen(true);
       return;
@@ -402,15 +405,9 @@ export default function UkurBalitaPage() {
 
     if (
       !tinggi ||
-      !berat ||
-      !lingkarKepala ||
-      (isOver6Months && !lingkarLengan)
+      !berat
     ) {
-      warning(
-        isOver6Months
-          ? "Harap isi semua data pengukuran!"
-          : "Harap isi data panjang, berat, dan lingkar kepala!",
-      );
+      warning("Panjang/tinggi dan berat wajib diisi untuk menyimpan pengukuran.");
       return;
     }
 
@@ -423,8 +420,21 @@ export default function UkurBalitaPage() {
       lingkarLengan: lingkarLengan ? parseFloat(lingkarLengan) : null,
     };
 
-    await addPengukuran(id, newMeasurement);
-    success("Pengukuran berhasil disimpan dan kehadiran otomatis tercatat.");
+    if (selectedMeasurement?.id) {
+      await updatePengukuranBalita(selectedMeasurement.id, {
+        bulan: selectedMonth,
+        tahun: selectedYear,
+        beratBadan: newMeasurement.beratBadan,
+        tinggiBadan: newMeasurement.tinggiBadan,
+        lingkarKepala: newMeasurement.lingkarKepala,
+        ...(newMeasurement.lingkarLengan !== null
+          ? { lila: newMeasurement.lingkarLengan }
+          : {}),
+      });
+    } else {
+      await addPengukuran(id, newMeasurement);
+    }
+    success("Pengukuran berhasil disimpan.");
     router.push(`/dashboard/balita/${id}`);
   };
 
@@ -450,8 +460,8 @@ export default function UkurBalitaPage() {
         <InfoPanel title="Cara mengisi pengukuran">
           Pilih bulan pengukuran, lalu isi angka sesuai hasil ukur. Jika bulan
           sudah pernah diukur, field dikunci dan perubahan dilakukan melalui
-          Edit Data Balita. Saat disimpan, kehadiran periode tersebut otomatis
-          tercatat.
+          Edit Data Balita. Kehadiran tetap dicatat manual melalui halaman
+          absensi.
         </InfoPanel>
 
         <Card className="p-5 bg-white border border-gray-100 shadow-sm rounded-xl flex items-center gap-4">
@@ -529,7 +539,7 @@ export default function UkurBalitaPage() {
 
                   setSelectedMonth(month);
                   const alreadyMeasured = measurementByPeriod[periodKey];
-                  if (alreadyMeasured) {
+                  if (isCompletedMeasurement(alreadyMeasured)) {
                     setIsMeasuredDialogOpen(true);
                   }
                 }}
@@ -540,7 +550,9 @@ export default function UkurBalitaPage() {
                     selectedYear,
                     month.value,
                   );
-                  const isMeasured = Boolean(measurementByPeriod[periodKey]);
+                  const isMeasured = isCompletedMeasurement(
+                    measurementByPeriod[periodKey],
+                  );
 
                   return (
                     <option key={periodKey} value={month.value}>
@@ -561,10 +573,16 @@ export default function UkurBalitaPage() {
             berjalan. Jika bulan sudah diukur, ubah datanya lewat Edit Data
             Balita.
           </p>
-          {selectedMeasurement && (
+          {isMeasurementLocked && (
             <p className="text-xs font-bold text-orange-600">
               {selectedMonthName} {selectedYear} sudah memiliki data pengukuran.
               Semua field dikunci, gunakan Edit Data Balita untuk mengubahnya.
+            </p>
+          )}
+          {selectedMeasurement && !isMeasurementLocked && (
+            <p className="text-xs font-bold text-teal-700">
+              Record awal periode ini belum memiliki berat dan tinggi yang
+              valid. Simpan form ini untuk melengkapi pengukuran.
             </p>
           )}
         </div>
@@ -607,9 +625,9 @@ export default function UkurBalitaPage() {
 
         <button
           onClick={handleSave}
-          disabled={Boolean(selectedMeasurement)}
+          disabled={isMeasurementLocked}
           className={`w-full font-bold py-4 rounded-xl transition-colors active:scale-95 shadow-md mt-6 ${
-            selectedMeasurement
+            isMeasurementLocked
               ? "bg-gray-200 text-gray-400 cursor-not-allowed shadow-none"
               : "bg-[#1fb999] hover:bg-teal-600 text-white shadow-teal-100 cursor-pointer"
           }`}
@@ -618,7 +636,7 @@ export default function UkurBalitaPage() {
         </button>
       </main>
 
-      {isMeasuredDialogOpen && selectedMeasurement && (
+      {isMeasuredDialogOpen && isMeasurementLocked && selectedMeasurement && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-white rounded-3xl p-6 max-w-sm w-full text-center shadow-2xl border border-orange-50">
             <div className="mx-auto w-14 h-14 bg-orange-50 rounded-full flex items-center justify-center mb-4 text-orange-600 font-black">

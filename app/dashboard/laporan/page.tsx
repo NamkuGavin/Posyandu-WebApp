@@ -25,6 +25,10 @@ import {
 } from "@/lib/api";
 import { Balita, Absensi, Pengukuran } from "@/types";
 import { useToast } from "@/components/ui/Toast";
+import {
+  getEffectiveAttendance,
+  getMeasuredBalitaIds,
+} from "@/lib/measurement-status";
 
 const months = [
   "Januari",
@@ -178,19 +182,9 @@ export default function LaporanPage() {
     };
   }, [selectedMonth, selectedYearNumber]);
 
-  const measuredBalitaIds = new Set(
-    pengukuranList
-      .map((pengukuran) => pengukuran.balitaId)
-      .filter((id): id is string => Boolean(id)),
-  );
-  const hadirBalitaIds = new Set([
-    ...absenList
-      .filter((absensi) => absensi.isHadir)
-      .map((absensi) => absensi.balitaId)
-      .filter((id): id is string => Boolean(id)),
-    ...Array.from(measuredBalitaIds),
-  ]);
-  const isBalitaHadir = (balitaId: string) => hadirBalitaIds.has(balitaId);
+  const measuredBalitaIds = getMeasuredBalitaIds(pengukuranList);
+  const isBalitaHadir = (balitaId: string) =>
+    getEffectiveAttendance(balitaId, absenList);
   const totalBalita = balitaList.length;
   const hadir = balitaList.filter((balita) => isBalitaHadir(balita.id)).length;
   const belumHadir = Math.max(totalBalita - hadir, 0);
@@ -309,7 +303,7 @@ export default function LaporanPage() {
             </h1>
             <p className="text-xs font-medium text-gray-500 mt-1">
               Pantau absensi, kelengkapan pengukuran, dan sasaran yang perlu
-              ditindaklanjuti. Pengukuran otomatis dihitung sebagai hadir.
+              ditindaklanjuti sebagai dua status yang terpisah.
             </p>
           </div>
 
@@ -407,7 +401,7 @@ export default function LaporanPage() {
           <StatCard
             label="Hadir"
             value={hadir}
-            caption={`${belumHadir} balita belum hadir atau belum diukur.`}
+            caption={`${belumHadir} balita belum tercatat hadir.`}
             icon={ClipboardCheck}
             tone="bg-emerald-50 text-emerald-600"
           />
@@ -436,7 +430,8 @@ export default function LaporanPage() {
                     Kinerja Periode
                   </h4>
                   <p className="text-xs font-medium text-gray-500 mt-1">
-                    Pengukuran otomatis dihitung hadir pada periode ini.
+                    Kehadiran berasal dari absensi manual, bukan dari data
+                    pengukuran.
                   </p>
                 </div>
                 <BarChart3 size={22} className="text-[#0d9488]" />
