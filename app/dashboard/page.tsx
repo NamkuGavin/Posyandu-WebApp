@@ -23,6 +23,10 @@ import Navbar from "@/components/layout/Navbar";
 import Card from "@/components/ui/Card";
 import { PageStatusState } from "@/components/ui/PageParts";
 import { getAbsensiList, getBalitaList, getPengukuranList } from "@/lib/api";
+import {
+  getEffectiveAttendance,
+  getMeasuredBalitaIds,
+} from "@/lib/measurement-status";
 import { useCurrentProfile } from "@/lib/useCurrentProfile";
 import { Absensi, Balita, Pengukuran } from "@/types";
 
@@ -160,11 +164,7 @@ export default function DashboardPage() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const measuredBalitaIds = new Set(
-    currentPengukuran
-      .map((pengukuran) => pengukuran.balitaId)
-      .filter((id): id is string => Boolean(id)),
-  );
+  const measuredBalitaIds = getMeasuredBalitaIds(currentPengukuran);
 
   const filteredSuggestions = balitaList
     .filter((balita) =>
@@ -177,16 +177,9 @@ export default function DashboardPage() {
     return !isMeasured;
   });
 
-  const hadirBalitaIds = new Set([
-    ...currentAbsensi
-      .filter((absensi) => absensi.isHadir)
-      .map((absensi) => absensi.balitaId)
-      .filter((id): id is string => Boolean(id)),
-    ...Array.from(measuredBalitaIds),
-  ]);
   const totalBalita = balitaList.length;
   const hadirBulanIni = balitaList.filter((balita) =>
-    hadirBalitaIds.has(balita.id),
+    getEffectiveAttendance(balita.id, currentAbsensi),
   ).length;
   const belumHadir = Math.max(totalBalita - hadirBulanIni, 0);
   const belumDiukur = belumDiukurList.length;
@@ -405,7 +398,7 @@ export default function DashboardPage() {
                     Cakupan Bulanan
                   </h2>
                   <p className="text-sm font-medium text-gray-500 mt-1">
-                    Pengukuran otomatis dihitung sebagai hadir periode{" "}
+                    Kehadiran dan pengukuran dihitung terpisah untuk periode{" "}
                     {currentPeriod}.
                   </p>
                 </div>

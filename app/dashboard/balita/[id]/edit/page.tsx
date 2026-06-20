@@ -12,6 +12,7 @@ import {
   updatePengukuranBalita,
 } from "@/lib/api";
 import { useCurrentProfile } from "@/lib/useCurrentProfile";
+import { isCompletedMeasurement } from "@/lib/measurement-status";
 import { Balita, Pengukuran } from "@/types";
 import { useToast } from "@/components/ui/Toast";
 
@@ -845,7 +846,7 @@ export default function EditBalitaPage() {
                           selectedMeasurementYear,
                           month.value,
                         );
-                        const isMeasured = Boolean(
+                        const isMeasured = isCompletedMeasurement(
                           measurementByPeriod[periodKey],
                         );
 
