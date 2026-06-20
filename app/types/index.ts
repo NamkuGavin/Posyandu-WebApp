@@ -51,6 +51,63 @@ export interface BerandaStats {
   belumDiukur: number;
 }
 
+export type GrowthInsightSectionId =
+  | "analisis"
+  | "risiko_gizi"
+  | "monitoring"
+  | "anomali"
+  | "rekomendasi";
+
+export interface GrowthInsightSection {
+  id: GrowthInsightSectionId;
+  title: string;
+  items: string[];
+  tone: "neutral" | "info" | "warning" | "action";
+}
+
+export type GrowthAnthropometryIndicatorId = "haz" | "waz" | "whz" | "baz";
+
+export interface GrowthAnthropometryIndicator {
+  id: GrowthAnthropometryIndicatorId;
+  label: string;
+  zScore: number | null;
+  classification: string;
+  status: "normal" | "warning" | "critical" | "unavailable";
+  note?: string;
+}
+
+export interface GrowthInsightResponse {
+  source: "groq" | "rules";
+  providerStatus:
+    | "ok"
+    | "not_configured"
+    | "provider_error"
+    | "invalid_response";
+  status: "ready" | "limited";
+  period: {
+    label: string;
+    months: string[];
+    missingMonths: string[];
+    isConsecutive: boolean;
+    note: string;
+  };
+  anthropometry: {
+    calculated: boolean;
+    period: string | null;
+    ageDays: number | null;
+    ageMonths: number | null;
+    measurementMode: "length" | "height" | null;
+    bmi: number | null;
+    indicators: GrowthAnthropometryIndicator[];
+    note: string;
+  };
+  sections: GrowthInsightSection[];
+  references: {
+    label: string;
+    url: string;
+  }[];
+}
+
 export type UserRole = "ADMIN" | "KADER";
 
 export interface KaderProfile {

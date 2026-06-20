@@ -6,7 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import Navbar from "@/components/layout/Navbar";
 import Card from "@/components/ui/Card";
 import { InfoPanel, PageStatusState } from "@/components/ui/PageParts";
-import { getBalitaById, addPengukuran, getPengukuranList } from "@/lib/api";
+import { getBalitaById, addPengukuran } from "@/lib/api";
 import { useCurrentProfile } from "@/lib/useCurrentProfile";
 import { Balita, Pengukuran } from "@/types";
 
@@ -103,6 +103,17 @@ function getLatestAvailableMonth(
 ) {
   return monthOptions[monthOptions.length - 1]?.value ?? fallback;
 }
+
+function getMeasurementsByPeriod(measurements: Pengukuran[] = []) {
+  return measurements.reduce<Record<string, Pengukuran>>(
+    (result, measurement) => {
+      result[getMeasurementPeriodKey(measurement.tahun, measurement.bulan)] =
+        measurement;
+      return result;
+    },
+    {},
+  );
+}
 import { useToast } from "@/components/ui/Toast";
 
 const InputWithSuffix = ({
@@ -162,9 +173,6 @@ export default function UkurBalitaPage() {
   const [loadState, setLoadState] = useState<"loading" | "success" | "error">(
     "loading",
   );
-  const [measurementLoadState, setMeasurementLoadState] = useState<
-    "loading" | "success" | "error"
-  >("loading");
   const { success, warning } = useToast();
   const [ageInMonths, setAgeInMonths] = useState<number | null>(null);
 
@@ -205,9 +213,6 @@ export default function UkurBalitaPage() {
     selectedMonth,
   );
   const selectedMeasurement = measurementByPeriod[selectedPeriodKey];
-  const isMeasurementStatusLoaded =
-    measurementLoadState === "success" &&
-    selectedPeriodKey in measurementByPeriod;
   const selectedMonthName = MONTH_NAMES[selectedMonth - 1] ?? "";
   const isMeasurementLocked = Boolean(selectedMeasurement);
 
@@ -215,7 +220,11 @@ export default function UkurBalitaPage() {
     let isActive = true;
 
     Promise.resolve().then(() => {
-      if (isActive) setLoadState("loading");
+      if (!isActive) return;
+      setLoadState("loading");
+      setMeasurementByPeriod({});
+      setSelectedYear(currentYear);
+      setSelectedMonth(currentMonth);
     });
 
     getBalitaById(id)
@@ -227,6 +236,9 @@ export default function UkurBalitaPage() {
         }
 
         setBalita(found);
+        setMeasurementByPeriod(
+          getMeasurementsByPeriod(found.pengukuran ?? []),
+        );
         if (found.tglLahir) {
           setAgeInMonths(calculateAgeInMonths(found.tglLahir));
         }
@@ -240,93 +252,7 @@ export default function UkurBalitaPage() {
     return () => {
       isActive = false;
     };
-  }, [id]);
-
-  useEffect(() => {
-    let isActive = true;
-
-    Promise.resolve().then(() => {
-      if (!isActive) return;
-      setMeasurementByPeriod({});
-      setSelectedYear(currentYear);
-      setSelectedMonth(currentMonth);
-      setMeasurementLoadState("loading");
-    });
-
-    return () => {
-      isActive = false;
-    };
   }, [currentMonth, currentYear, id]);
-
-  useEffect(() => {
-    let isActive = true;
-
-    if (!birthPeriod || !hasAvailablePeriod) {
-      Promise.resolve().then(() => {
-        if (isActive) setMeasurementLoadState("loading");
-      });
-      return () => {
-        isActive = false;
-      };
-    }
-
-    const validMonth = monthOptions.some(
-      (month) => month.value === selectedMonth,
-    );
-
-    if (!validMonth) {
-      Promise.resolve().then(() => {
-        if (isActive) setMeasurementLoadState("loading");
-      });
-      return () => {
-        isActive = false;
-      };
-    }
-
-    if (selectedPeriodKey in measurementByPeriod) {
-      Promise.resolve().then(() => {
-        if (isActive) setMeasurementLoadState("success");
-      });
-      return () => {
-        isActive = false;
-      };
-    }
-
-    Promise.resolve().then(() => {
-      if (isActive) setMeasurementLoadState("loading");
-    });
-
-    getPengukuranList(selectedMonth, selectedYear)
-      .then((list) => {
-        if (!isActive) return;
-        const measurement =
-          list.find((pengukuran) => pengukuran.balitaId === id) ?? null;
-        setMeasurementByPeriod((prev) => ({
-          ...prev,
-          [selectedPeriodKey]: measurement,
-        }));
-        setMeasurementLoadState("success");
-      })
-      .catch((err) => {
-        console.error(err);
-        if (isActive) setMeasurementLoadState("error");
-      });
-
-    return () => {
-      isActive = false;
-    };
-  }, [
-    birthPeriod,
-    currentMonth,
-    currentYear,
-    hasAvailablePeriod,
-    id,
-    measurementByPeriod,
-    monthOptions,
-    selectedMonth,
-    selectedPeriodKey,
-    selectedYear,
-  ]);
 
   useEffect(() => {
     if (!birthPeriod) return;
@@ -461,29 +387,6 @@ export default function UkurBalitaPage() {
     );
   }
 
-  if (!isMeasurementStatusLoaded) {
-    return (
-      <div className="min-h-screen bg-gray-50 text-black font-sans pb-10">
-        <Navbar title="Input Pengukuran" />
-        <main className="p-4 sm:p-6 max-w-2xl mx-auto mt-2">
-          <PageStatusState
-            tone={measurementLoadState === "error" ? "error" : "loading"}
-            title={
-              measurementLoadState === "error"
-                ? "Status pengukuran belum bisa dicek"
-                : "Mengecek status pengukuran"
-            }
-            description={
-              measurementLoadState === "error"
-                ? "Terjadi gangguan saat mengambil data pengukuran periode ini. Coba muat ulang halaman."
-                : `Mengambil status pengukuran ${selectedMonthName} ${selectedYear}.`
-            }
-          />
-        </main>
-      </div>
-    );
-  }
-
   const handleSave = async () => {
     if (isAdmin) {
       warning("Admin hanya dapat melihat data pengukuran tanpa mengubah data.");
@@ -491,11 +394,6 @@ export default function UkurBalitaPage() {
     }
 
     const isOver6Months = ageInMonths !== null && ageInMonths > 6;
-
-    if (!isMeasurementStatusLoaded) {
-      warning("Status pengukuran periode ini masih dicek. Coba lagi sebentar.");
-      return;
-    }
 
     if (isMeasurementLocked) {
       setIsMeasuredDialogOpen(true);
@@ -642,15 +540,12 @@ export default function UkurBalitaPage() {
                     selectedYear,
                     month.value,
                   );
-                  const isStatusLoaded = periodKey in measurementByPeriod;
                   const isMeasured = Boolean(measurementByPeriod[periodKey]);
 
                   return (
                     <option key={periodKey} value={month.value}>
                       {month.label} {selectedYear}
-                      {isStatusLoaded
-                        ? ` - ${isMeasured ? "Sudah diukur" : "Belum diukur"}`
-                        : ""}
+                      {` - ${isMeasured ? "Sudah diukur" : "Belum diukur"}`}
                     </option>
                   );
                 })}
@@ -712,16 +607,14 @@ export default function UkurBalitaPage() {
 
         <button
           onClick={handleSave}
-          disabled={!isMeasurementStatusLoaded || Boolean(selectedMeasurement)}
+          disabled={Boolean(selectedMeasurement)}
           className={`w-full font-bold py-4 rounded-xl transition-colors active:scale-95 shadow-md mt-6 ${
-            !isMeasurementStatusLoaded || selectedMeasurement
+            selectedMeasurement
               ? "bg-gray-200 text-gray-400 cursor-not-allowed shadow-none"
               : "bg-[#1fb999] hover:bg-teal-600 text-white shadow-teal-100 cursor-pointer"
           }`}
         >
-          {isMeasurementStatusLoaded
-            ? "Simpan Pengukuran"
-            : "Mengecek Status..."}
+          Simpan Pengukuran
         </button>
       </main>
 

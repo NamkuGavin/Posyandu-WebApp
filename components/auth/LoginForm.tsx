@@ -58,7 +58,9 @@ export default function LoginForm() {
         />
         <button
           type="button"
-          aria-label={showPassword ? "Sembunyikan password" : "Tampilkan password"}
+          aria-label={
+            showPassword ? "Sembunyikan password" : "Tampilkan password"
+          }
           onClick={() => setShowPassword(!showPassword)}
           className="absolute right-3 top-[36px] p-2 text-gray-500 hover:text-teal-600 transition-colors rounded-lg"
         >

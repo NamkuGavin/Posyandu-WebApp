@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import {
+  Activity,
   ArrowLeft,
   Trash2,
   PencilLine,
@@ -11,21 +12,27 @@ import {
   Baby,
   ChevronDown,
   AlertTriangle,
+  Database,
+  ExternalLink,
+  Lightbulb,
+  ShieldAlert,
   ShieldCheck,
+  TrendingUp,
+  type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import Navbar from "@/components/layout/Navbar";
 import Card from "@/components/ui/Card";
 import { InfoPanel, PageStatusState } from "@/components/ui/PageParts";
-import {
-  getBalitaById,
-  deleteBalita,
-  getEvaluasi,
-  getPengukuranList,
-} from "@/lib/api";
+import { getBalitaById, deleteBalita, getEvaluasi } from "@/lib/api";
 import { useCurrentProfile } from "@/lib/useCurrentProfile";
-import { Balita, Pengukuran } from "@/types";
+import {
+  Balita,
+  GrowthInsightResponse,
+  GrowthInsightSectionId,
+  Pengukuran,
+} from "@/types";
 import { useToast } from "@/components/ui/Toast";
 import {
   ResponsiveContainer,
@@ -182,99 +189,62 @@ const GrafikPertumbuhan = ({
   );
 };
 
-const AI_FALLBACK_TEXT =
-  "**Status**\n- Insight AI sedang tidak tersedia.\n\n**Yang bisa dicek kader**\n- Gunakan grafik dan riwayat pengukuran untuk melihat perkembangan balita.";
+const INSIGHT_TABS: {
+  id: GrowthInsightSectionId;
+  label: string;
+  icon: LucideIcon;
+}[] = [
+  { id: "analisis", label: "Analisis", icon: Activity },
+  { id: "risiko_gizi", label: "Risiko Gizi", icon: ShieldAlert },
+  { id: "monitoring", label: "Monitoring", icon: TrendingUp },
+  { id: "anomali", label: "Anomali", icon: AlertTriangle },
+  {
+    id: "rekomendasi",
+    label: "Rekomendasi & Tindakan",
+    icon: Lightbulb,
+  },
+];
 
-function renderInsightInline(text: string) {
-  return text
-    .split(/(\*\*[^*]+\*\*)/g)
-    .filter(Boolean)
-    .map((segment, index) => {
-      const isStrong = segment.startsWith("**") && segment.endsWith("**");
-
-      if (isStrong) {
-        return (
-          <strong
-            key={`${segment}-${index}`}
-            className="font-black text-[#0d9488]"
-          >
-            {segment.slice(2, -2)}
-          </strong>
-        );
-      }
-
-      return <span key={`${segment}-${index}`}>{segment}</span>;
-    });
-}
-
-function FormattedAiInsight({ text }: { text: string }) {
-  const lines = text
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-
-  if (lines.length === 0) {
-    return (
-      <p className="text-xs text-gray-800 leading-relaxed mb-4">
-        Insight belum tersedia.
-      </p>
-    );
-  }
-
-  return (
-    <div className="space-y-3 mb-4">
-      {lines.map((line, index) => {
-        const markdownHeading = line.match(/^#{1,6}\s+(.+)$/)?.[1];
-        const boldHeading = line.match(/^\*\*(.+)\*\*:?$/)?.[1];
-        const heading = markdownHeading ?? boldHeading;
-        const bullet = line.match(/^(?:[-•*]|\d+[.)])\s+(.+)$/);
-
-        if (heading) {
-          return (
-            <div
-              key={`${line}-${index}`}
-              className="inline-flex rounded-full bg-white/80 border border-teal-100 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-[#0d9488]"
-            >
-              {heading}
-            </div>
-          );
-        }
-
-        if (bullet) {
-          return (
-            <div
-              key={`${line}-${index}`}
-              className="flex gap-3 rounded-xl border border-teal-100/80 bg-white/75 p-3 text-left"
-            >
-              <span className="mt-1.5 h-2 w-2 rounded-full bg-[#1fb999] shrink-0" />
-              <p className="text-xs font-semibold leading-relaxed text-gray-800">
-                {renderInsightInline(bullet[1])}
-              </p>
-            </div>
-          );
-        }
-
-        return (
-          <p
-            key={`${line}-${index}`}
-            className="text-xs font-semibold leading-relaxed text-gray-800"
-          >
-            {renderInsightInline(line)}
-          </p>
-        );
-      })}
-    </div>
-  );
-}
+const CLIENT_INSIGHT_FALLBACK: GrowthInsightResponse = {
+  source: "rules",
+  providerStatus: "provider_error",
+  status: "limited",
+  period: {
+    label: "Belum tersedia",
+    months: [],
+    missingMonths: [],
+    isConsecutive: false,
+    note: "Insight belum dapat dimuat dari server.",
+  },
+  anthropometry: {
+    calculated: false,
+    period: null,
+    ageDays: null,
+    ageMonths: null,
+    measurementMode: null,
+    bmi: null,
+    indicators: [],
+    note: "Perhitungan antropometri belum tersedia.",
+  },
+  sections: INSIGHT_TABS.map((tab) => ({
+    id: tab.id,
+    title: tab.label,
+    tone:
+      tab.id === "anomali"
+        ? "warning"
+        : tab.id === "rekomendasi"
+          ? "action"
+          : "neutral",
+    items: ["Data insight untuk bagian ini belum tersedia."],
+  })),
+  references: [],
+};
 
 export default function DetailBalitaPage() {
   const params = useParams();
   const router = useRouter();
   const id = params.id as string;
   const [balita, setBalita] = useState<Balita | null>(null);
-  const [measurementHistory, setMeasurementHistory] = useState<Pengukuran[]>(
-    [],
-  );
   const [loadState, setLoadState] = useState<"loading" | "success" | "error">(
     "loading",
   );
@@ -304,7 +274,12 @@ export default function DetailBalitaPage() {
 
   // State untuk persiapan integrasi AI
   const [isAiLoading, setIsAiLoading] = useState(true);
-  const [aiAnalysisText, setAiAnalysisText] = useState("");
+  const [aiInsight, setAiInsight] = useState<GrowthInsightResponse | null>(
+    null,
+  );
+  const [activeInsightTab, setActiveInsightTab] =
+    useState<GrowthInsightSectionId>("analisis");
+  const [isInsightFilterOpen, setIsInsightFilterOpen] = useState(false);
 
   useEffect(() => {
     let isActive = true;
@@ -313,11 +288,8 @@ export default function DetailBalitaPage() {
       if (isActive) setLoadState("loading");
     });
 
-    Promise.all([
-      getBalitaById(id),
-      getPengukuranList(currentMonth, currentYear),
-    ])
-      .then(([found, list]) => {
+    getBalitaById(id)
+      .then((found) => {
         if (!isActive) return;
         if (!found) {
           setLoadState("error");
@@ -325,9 +297,6 @@ export default function DetailBalitaPage() {
         }
 
         setBalita(found);
-        setMeasurementHistory(
-          list.filter((pengukuran) => pengukuran.balitaId === id),
-        );
         setLoadState("success");
       })
       .catch((err) => {
@@ -338,7 +307,7 @@ export default function DetailBalitaPage() {
     return () => {
       isActive = false;
     };
-  }, [currentMonth, currentYear, id]);
+  }, [id]);
 
   useEffect(() => {
     if (!balita) return;
@@ -350,14 +319,13 @@ export default function DetailBalitaPage() {
 
     getEvaluasi({
       ...balita,
-      pengukuran:
-        measurementHistory.length > 0 ? measurementHistory : balita.pengukuran,
+      pengukuran: balita.pengukuran,
     })
       .then((data) => {
-        if (isActive) setAiAnalysisText(data.analisis);
+        if (isActive) setAiInsight(data);
       })
       .catch(() => {
-        if (isActive) setAiAnalysisText(AI_FALLBACK_TEXT);
+        if (isActive) setAiInsight(CLIENT_INSIGHT_FALLBACK);
       })
       .finally(() => {
         if (isActive) setIsAiLoading(false);
@@ -366,7 +334,7 @@ export default function DetailBalitaPage() {
     return () => {
       isActive = false;
     };
-  }, [balita, measurementHistory]);
+  }, [balita]);
 
   if (loadState !== "success" || !balita || balita.id !== id) {
     return (
@@ -382,8 +350,8 @@ export default function DetailBalitaPage() {
             }
             description={
               loadState === "error"
-                ? "Terjadi gangguan saat mengambil data balita atau status pengukuran bulan ini. Coba muat ulang halaman."
-                : "Mengambil data balita dan status pengukuran bulan ini."
+                ? "Terjadi gangguan saat mengambil data balita dan riwayat pengukurannya. Coba muat ulang halaman."
+                : "Mengambil data balita dan seluruh riwayat pengukuran."
             }
           />
         </main>
@@ -391,22 +359,20 @@ export default function DetailBalitaPage() {
     );
   }
 
-  const mergedPengukuran = [
-    ...(balita.pengukuran ?? []),
-    ...measurementHistory,
-  ];
-  const pengukuranHistory = Array.from(
-    new Map(
-      mergedPengukuran.map((pengukuran, index) => [
-        pengukuran.id ??
-          `${pengukuran.balitaId}-${pengukuran.tahun}-${pengukuran.bulan}-${index}`,
-        pengukuran,
-      ]),
-    ).values(),
-  );
+  const pengukuranHistory = balita.pengukuran ?? [];
   const isMeasuredThisMonth = pengukuranHistory.some(
     (p) => p.bulan === currentMonth && p.tahun === currentYear,
   );
+  const activeInsightSection = aiInsight?.sections.find(
+    (section) => section.id === activeInsightTab,
+  );
+  const activeInsightTabMeta =
+    INSIGHT_TABS.find((tab) => tab.id === activeInsightTab) ?? INSIGHT_TABS[0];
+  const ActiveInsightIcon = activeInsightTabMeta.icon;
+  const isAiProviderActive = aiInsight?.source === "groq";
+  const hasAiProviderIssue =
+    aiInsight !== null && aiInsight.providerStatus !== "ok";
+  const isWarningInsight = activeInsightSection?.tone === "warning";
 
   const actionButtons = [
     {
@@ -546,27 +512,223 @@ export default function DetailBalitaPage() {
             )}
 
             {/* Analisis AI */}
-            <div className="border border-[#1fb999]/30 bg-[#f0fbf9] rounded-xl p-5 relative overflow-hidden">
-              <div className="flex items-center gap-2 mb-3">
-                <Sparkles size={18} className="text-[#0d9488]" />
-                <h4 className="font-bold text-sm text-[#0d9488]">
-                  Insight AI Pertumbuhan
-                </h4>
+            <div className="border border-[#1fb999]/30 bg-[#f0fbf9] rounded-xl p-5 relative">
+              <div className="flex items-start justify-between gap-3 mb-4">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Sparkles size={18} className="text-[#0d9488] shrink-0" />
+                  <div>
+                    <h4 className="font-bold text-sm text-[#0d9488]">
+                      Insight Pertumbuhan
+                    </h4>
+                    <p className="text-[10px] font-semibold text-teal-700 mt-0.5">
+                      Skrining dini pola yang perlu diperiksa lebih lanjut
+                    </p>
+                  </div>
+                </div>
+                {!isAiLoading && aiInsight && (
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-teal-100 bg-white px-2.5 py-1 text-[9px] font-black uppercase text-[#0d9488] whitespace-nowrap">
+                    <Database size={11} />
+                    {isAiProviderActive ? "AI + Data" : "Mode Data"}
+                  </span>
+                )}
               </div>
 
               {isAiLoading ? (
-                <div className="space-y-2 mb-4 animate-pulse">
-                  <div className="h-3 bg-teal-100 rounded w-full"></div>
-                  <div className="h-3 bg-teal-100 rounded w-5/6"></div>
-                  <div className="h-3 bg-teal-100 rounded w-4/6"></div>
+                <div className="space-y-3 mb-4 animate-pulse">
+                  <div className="h-16 bg-teal-100 rounded-xl w-full" />
+                  <div className="h-10 bg-teal-100 rounded-xl w-full" />
+                  <div className="h-20 bg-teal-100 rounded-xl w-full" />
                 </div>
+              ) : aiInsight && activeInsightSection ? (
+                <>
+                  <div
+                    className={`rounded-xl border p-3 mb-4 ${
+                      aiInsight.period.isConsecutive
+                        ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                        : "border-amber-200 bg-amber-50 text-amber-800"
+                    }`}
+                  >
+                    <p className="text-[10px] font-black uppercase tracking-widest">
+                      Periode Analisis
+                    </p>
+                    <p className="text-xs font-black mt-1">
+                      {aiInsight.period.label}
+                    </p>
+                    <p className="text-[11px] font-semibold leading-relaxed mt-1">
+                      {aiInsight.period.note}
+                    </p>
+                  </div>
+
+                  {aiInsight.anthropometry.indicators.length > 0 && (
+                    <div className="mb-4 border-y border-teal-100 py-3">
+                      <div className="flex items-center justify-between gap-3 mb-2">
+                        <div>
+                          <p className="text-[10px] font-black uppercase text-gray-500">
+                            Z-score WHO terbaru
+                          </p>
+                          <p className="text-[10px] font-semibold text-gray-600 mt-0.5">
+                            Periode {aiInsight.anthropometry.period}
+                            {aiInsight.anthropometry.ageMonths !== null
+                              ? ` | usia ${aiInsight.anthropometry.ageMonths.toFixed(0)} bulan`
+                              : ""}
+                          </p>
+                        </div>
+                        {aiInsight.anthropometry.bmi !== null && (
+                          <span className="text-[10px] font-black text-[#0d9488] whitespace-nowrap">
+                            IMT {aiInsight.anthropometry.bmi.toFixed(2)}
+                          </span>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {aiInsight.anthropometry.indicators.map((indicator) => {
+                          const statusClass =
+                            indicator.status === "critical"
+                              ? "text-rose-700"
+                              : indicator.status === "warning"
+                                ? "text-amber-700"
+                                : indicator.status === "normal"
+                                  ? "text-emerald-700"
+                                  : "text-gray-500";
+
+                          return (
+                            <div
+                              key={indicator.id}
+                              className="flex items-start justify-between gap-3 border-b border-teal-100 py-2 last:border-b-0"
+                            >
+                              <div className="min-w-0">
+                                <p className="text-[10px] font-bold text-gray-600">
+                                  {indicator.label}
+                                </p>
+                                <p
+                                  className={`text-[10px] font-black mt-0.5 ${statusClass}`}
+                                >
+                                  {indicator.classification}
+                                </p>
+                              </div>
+                              <span
+                                className={`text-xs font-black whitespace-nowrap ${statusClass}`}
+                              >
+                                {indicator.zScore === null
+                                  ? "N/A"
+                                  : indicator.zScore.toFixed(2)}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <p className="text-[9px] font-semibold leading-relaxed text-gray-500 mt-2">
+                        {aiInsight.anthropometry.note}
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="relative mb-4">
+                    <button
+                      type="button"
+                      aria-haspopup="menu"
+                      aria-expanded={isInsightFilterOpen}
+                      onClick={() =>
+                        setIsInsightFilterOpen((isOpen) => !isOpen)
+                      }
+                      className="flex h-10 w-full items-center justify-between gap-3 rounded-lg border border-teal-200 bg-white px-3 text-left text-xs font-black text-gray-800 hover:border-teal-400"
+                    >
+                      <span className="flex min-w-0 items-center gap-2">
+                        <ActiveInsightIcon
+                          size={15}
+                          className="shrink-0 text-[#0d9488]"
+                        />
+                        <span className="truncate">
+                          {activeInsightTabMeta.label}
+                        </span>
+                      </span>
+                      <ChevronDown
+                        size={15}
+                        className={`shrink-0 text-gray-500 transition-transform ${
+                          isInsightFilterOpen ? "rotate-180" : ""
+                        }`}
+                      />
+                    </button>
+
+                    {isInsightFilterOpen && (
+                      <div
+                        role="menu"
+                        className="absolute left-0 right-0 top-11 z-20 overflow-hidden rounded-lg border border-teal-100 bg-white p-1.5 shadow-xl"
+                      >
+                        {INSIGHT_TABS.map((tab) => {
+                          const TabIcon = tab.icon;
+                          const isActive = activeInsightTab === tab.id;
+
+                          return (
+                            <button
+                              key={tab.id}
+                              type="button"
+                              role="menuitem"
+                              onClick={() => {
+                                setActiveInsightTab(tab.id);
+                                setIsInsightFilterOpen(false);
+                              }}
+                              className={`flex min-h-9 w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-[11px] font-bold transition-colors ${
+                                isActive
+                                  ? "bg-teal-50 text-[#0d9488]"
+                                  : "text-gray-700 hover:bg-gray-50"
+                              }`}
+                            >
+                              <TabIcon size={14} className="shrink-0" />
+                              <span>{tab.label}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="mb-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <ActiveInsightIcon
+                        size={16}
+                        className={
+                          isWarningInsight ? "text-amber-600" : "text-[#0d9488]"
+                        }
+                      />
+                      <h5 className="text-xs font-black text-gray-900">
+                        {activeInsightSection.title}
+                      </h5>
+                    </div>
+                    <div className="divide-y divide-teal-100">
+                      {activeInsightSection.items.map((item, index) => (
+                        <div
+                          key={`${activeInsightSection.id}-${index}`}
+                          className="flex gap-3 py-3 first:pt-1 last:pb-1"
+                        >
+                          <span
+                            className={`mt-1.5 h-2 w-2 rounded-full shrink-0 ${
+                              isWarningInsight ? "bg-amber-500" : "bg-[#1fb999]"
+                            }`}
+                          />
+                          <p className="text-xs font-semibold leading-relaxed text-gray-800">
+                            {item}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {hasAiProviderIssue && (
+                    <p className="text-[10px] font-semibold leading-relaxed text-amber-700 mb-3">
+                      Provider AI tidak aktif. Insight tetap dihitung dari
+                      urutan periode dan perubahan angka pengukuran.
+                    </p>
+                  )}
+                </>
               ) : (
-                <FormattedAiInsight text={aiAnalysisText} />
+                <p className="text-xs font-semibold text-gray-600 mb-4">
+                  Insight pertumbuhan belum tersedia.
+                </p>
               )}
 
               <p className="text-[10px] italic text-[#0d9488] opacity-80">
-                Analisis AI bersifat pendukung pencatatan, bukan diagnosis
-                medis.
+                Insight ini mendukung pencatatan dan skrining awal, bukan
+                diagnosis atau pengganti pemeriksaan tenaga kesehatan.
               </p>
             </div>
           </div>
