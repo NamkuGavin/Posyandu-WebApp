@@ -29,6 +29,7 @@ import {
   getEffectiveAttendance,
   getMeasuredBalitaIds,
 } from "@/lib/measurement-status";
+import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 
 const months = [
   "Januari",
@@ -132,6 +133,143 @@ const ProgressStat = ({
   </div>
 );
 
+type GenderChartDatum = {
+  name: "Laki-laki" | "Perempuan";
+  value: number;
+  color: string;
+};
+
+const GenderPieSummary = ({
+  title,
+  description,
+  data,
+  emptyMessage,
+  icon: Icon,
+}: {
+  title: string;
+  description: string;
+  data: GenderChartDatum[];
+  emptyMessage: string;
+  icon: LucideIcon;
+}) => {
+  const [mounted, setMounted] = useState(false);
+  const total = data.reduce((sum, item) => sum + item.value, 0);
+
+  useEffect(() => {
+    let isActive = true;
+
+    Promise.resolve().then(() => {
+      if (isActive) setMounted(true);
+    });
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  return (
+    <Card className="min-w-0 p-5 rounded-xl">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h3 className="text-sm font-black text-gray-900">{title}</h3>
+          <p className="text-xs font-medium leading-relaxed text-gray-500 mt-1">
+            {description}
+          </p>
+        </div>
+        <Icon size={22} className="text-[#0d9488] shrink-0" />
+      </div>
+
+      {!mounted ? (
+        <div className="h-[250px] mt-4 rounded-xl bg-gray-50 animate-pulse" />
+      ) : total === 0 ? (
+        <div className="h-[250px] mt-4 flex items-center justify-center rounded-xl border border-dashed border-gray-200 bg-gray-50 px-6 text-center">
+          <p className="text-xs font-bold leading-relaxed text-gray-400">
+            {emptyMessage}
+          </p>
+        </div>
+      ) : (
+        <>
+          <div className="relative mt-3 h-[250px] w-full min-w-0">
+            <ResponsiveContainer
+              width="100%"
+              height="100%"
+              minWidth={0}
+              minHeight={250}
+              initialDimension={{ width: 320, height: 250 }}
+            >
+              <PieChart>
+                <Pie
+                  data={data}
+                  dataKey="value"
+                  nameKey="name"
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={54}
+                  outerRadius={88}
+                  paddingAngle={3}
+                  stroke="#ffffff"
+                  strokeWidth={3}
+                >
+                  {data.map((item) => (
+                    <Cell key={item.name} fill={item.color} />
+                  ))}
+                </Pie>
+                <Tooltip
+                  formatter={(value) => [`${value} balita`, "Jumlah"]}
+                  contentStyle={{
+                    borderRadius: 8,
+                    borderColor: "#e5e7eb",
+                    fontSize: 12,
+                    fontWeight: 700,
+                  }}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+              <span className="text-3xl font-black text-gray-950">{total}</span>
+              <span className="text-[10px] font-bold uppercase text-gray-400">
+                Balita
+              </span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-10">
+            {data.map((item) => {
+              const percentage =
+                total > 0 ? Number(((item.value / total) * 100).toFixed(1)) : 0;
+
+              return (
+                <div
+                  key={item.name}
+                  className="flex items-center justify-between gap-3 border-t border-gray-100 pt-3"
+                >
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span
+                      className="h-3 w-3 rounded-sm shrink-0"
+                      style={{ backgroundColor: item.color }}
+                    />
+                    <span className="truncate text-xs font-bold text-gray-700">
+                      {item.name}
+                    </span>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-black text-gray-950">
+                      {item.value}
+                    </p>
+                    <p className="text-[10px] font-bold text-gray-400">
+                      {formatPercent(percentage)}%
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </Card>
+  );
+};
+
 export default function LaporanPage() {
   const currentYear = new Date().getFullYear();
   const currentMonth = new Date().getMonth() + 1;
@@ -209,6 +347,44 @@ export default function LaporanPage() {
     totalBalita > 0
       ? parseFloat(((sudahDiukur / totalBalita) * 100).toFixed(1))
       : 0;
+  const attendanceGenderData: GenderChartDatum[] = [
+    {
+      name: "Laki-laki",
+      value: balitaList.filter(
+        (balita) =>
+          balita.jenisKelamin === "LAKI_LAKI" && isBalitaHadir(balita.id),
+      ).length,
+      color: "#0ea5e9",
+    },
+    {
+      name: "Perempuan",
+      value: balitaList.filter(
+        (balita) =>
+          balita.jenisKelamin === "PEREMPUAN" && isBalitaHadir(balita.id),
+      ).length,
+      color: "#ec4899",
+    },
+  ];
+  const measurementGenderData: GenderChartDatum[] = [
+    {
+      name: "Laki-laki",
+      value: balitaList.filter(
+        (balita) =>
+          balita.jenisKelamin === "LAKI_LAKI" &&
+          measuredBalitaIds.has(balita.id),
+      ).length,
+      color: "#0ea5e9",
+    },
+    {
+      name: "Perempuan",
+      value: balitaList.filter(
+        (balita) =>
+          balita.jenisKelamin === "PEREMPUAN" &&
+          measuredBalitaIds.has(balita.id),
+      ).length,
+      color: "#ec4899",
+    },
+  ];
   const followUpList = balitaList
     .map((balita) => {
       const isHadir = isBalitaHadir(balita.id);
@@ -420,6 +596,23 @@ export default function LaporanPage() {
             tone="bg-orange-50 text-orange-600"
           />
         </div>
+
+        <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <GenderPieSummary
+            title="Rekap Kehadiran"
+            description={`Komposisi balita yang hadir pada ${selectedMonthName} ${selectedYear}.`}
+            data={attendanceGenderData}
+            emptyMessage={`Belum ada balita yang tercatat hadir pada ${selectedMonthName} ${selectedYear}.`}
+            icon={ClipboardCheck}
+          />
+          <GenderPieSummary
+            title="Rekap Pengukuran"
+            description={`Komposisi balita dengan berat dan tinggi valid pada ${selectedMonthName} ${selectedYear}.`}
+            data={measurementGenderData}
+            emptyMessage={`Belum ada pengukuran balita yang lengkap pada ${selectedMonthName} ${selectedYear}.`}
+            icon={Ruler}
+          />
+        </section>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
           <div className="lg:col-span-2 space-y-6">

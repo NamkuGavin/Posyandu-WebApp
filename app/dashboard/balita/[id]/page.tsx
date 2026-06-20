@@ -584,7 +584,7 @@ export default function DetailBalitaPage() {
                           </span>
                         )}
                       </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         {aiInsight.anthropometry.indicators.map((indicator) => {
                           const statusClass =
                             indicator.status === "critical"
