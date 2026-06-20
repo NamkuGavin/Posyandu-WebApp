@@ -21,12 +21,12 @@ import {
 import {
   getBalitaList,
   getAbsensiList,
-  getPengukuranList,
   bulkUpdateAbsensi,
 } from "@/lib/api";
 import { useCurrentProfile } from "@/lib/useCurrentProfile";
 import { useToast } from "@/components/ui/Toast";
-import { Absensi, Balita, Pengukuran } from "@/types";
+import { Absensi, Balita } from "@/types";
+import { getEffectiveAttendance } from "@/lib/measurement-status";
 
 const months = [
   "Januari",
@@ -48,7 +48,6 @@ export default function AbsenBalitaPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [balitaList, setBalitaList] = useState<Balita[]>([]);
   const [absenData, setAbsenData] = useState<Absensi[]>([]);
-  const [pengukuranData, setPengukuranData] = useState<Pengukuran[]>([]);
   const [loadState, setLoadState] = useState<"loading" | "success" | "error">(
     "loading",
   );
@@ -70,13 +69,11 @@ export default function AbsenBalitaPage() {
     Promise.all([
       getBalitaList(),
       getAbsensiList(selectedMonth, currentYear),
-      getPengukuranList(selectedMonth, currentYear),
     ])
-      .then(([balitaData, absensiData, pengukuranData]) => {
+      .then(([balitaData, absensiData]) => {
         if (!isActive) return;
         setBalitaList(balitaData);
         setAbsenData(absensiData);
-        setPengukuranData(pengukuranData);
         setLoadState("success");
       })
       .catch((err) => {
@@ -89,20 +86,8 @@ export default function AbsenBalitaPage() {
     };
   }, [selectedMonth, currentYear]);
 
-  const measuredBalitaIds = new Set(
-    pengukuranData
-      .map((pengukuran) => pengukuran.balitaId)
-      .filter((id): id is string => Boolean(id)),
-  );
-  const isAutomaticallyPresent = (balitaId: string) =>
-    measuredBalitaIds.has(balitaId);
-  const getEffectiveHadir = (balitaId: string) => {
-    const isManualHadir = absenData.find(
-      (absensi) => absensi.balitaId === balitaId,
-    )?.isHadir;
-
-    return Boolean(isManualHadir || isAutomaticallyPresent(balitaId));
-  };
+  const getEffectiveHadir = (balitaId: string) =>
+    getEffectiveAttendance(balitaId, absenData);
 
   const handleStatusChange = async (
     id: string,
@@ -110,13 +95,6 @@ export default function AbsenBalitaPage() {
   ) => {
     if (isAdmin || isRoleLoading) {
       warning("Admin hanya dapat melihat data absensi tanpa mengubah status.");
-      return;
-    }
-
-    if (newStatus === "tidak" && isAutomaticallyPresent(id)) {
-      warning(
-        "Balita yang sudah diukur otomatis tercatat hadir pada periode ini.",
-      );
       return;
     }
 
@@ -172,8 +150,8 @@ export default function AbsenBalitaPage() {
             }
             description={
               loadState === "error"
-                ? "Terjadi gangguan saat mengambil data balita, absensi, atau pengukuran periode ini. Coba muat ulang halaman."
-                : "Mengambil data balita, absensi, dan pengukuran periode ini."
+                ? "Terjadi gangguan saat mengambil data balita atau absensi periode ini. Coba muat ulang halaman."
+                : "Mengambil data balita dan absensi periode ini."
             }
           />
         </main>
@@ -188,7 +166,7 @@ export default function AbsenBalitaPage() {
         <PageHeader
           eyebrow="Absensi"
           title={`Absen ${selectedMonthName} ${currentYear}`}
-          description="Pengukuran yang tersimpan otomatis mencatat hadir. Gunakan halaman ini untuk koreksi absensi manual."
+          description="Kehadiran dicatat manual oleh kader untuk setiap periode."
         />
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -281,9 +259,8 @@ export default function AbsenBalitaPage() {
         </Card>
 
         <InfoPanel title="Petunjuk absensi">
-          Data pengukuran otomatis membuat balita tercatat hadir. Gunakan tombol
-          Hadir atau Tidak hanya untuk koreksi absensi manual pada periode yang
-          dipilih.
+          Gunakan tombol Hadir atau Tidak untuk mencatat dan mengoreksi
+          kehadiran. Status absensi tidak dipengaruhi oleh data pengukuran.
         </InfoPanel>
 
         {isAdmin && (
@@ -313,13 +290,12 @@ export default function AbsenBalitaPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {filteredData.length > 0 ? (
             filteredData.map((balita) => {
-              const isAutoHadir = isAutomaticallyPresent(balita.id);
               const manualAbsensi = absenData.find(
                 (absensi) => absensi.balitaId === balita.id,
               );
               const isHadir = getEffectiveHadir(balita.id);
               const isManualTidak = manualAbsensi?.isHadir === false;
-              const isControlDisabled = isAdmin || isRoleLoading || isAutoHadir;
+              const isControlDisabled = isAdmin || isRoleLoading;
 
               return (
                 <Card
@@ -343,11 +319,6 @@ export default function AbsenBalitaPage() {
                       <p className="text-xs text-gray-500 mt-0.5 truncate">
                         RT {balita.rt}/RW {balita.rw}
                       </p>
-                      {isAutoHadir && (
-                        <p className="text-[10px] font-bold text-emerald-600 mt-1">
-                          Hadir otomatis dari pengukuran
-                        </p>
-                      )}
                     </div>
                   </div>
 

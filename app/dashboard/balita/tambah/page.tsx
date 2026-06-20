@@ -86,7 +86,6 @@ type MeasurementInputFieldProps = {
   value: string;
   onChange: (value: string) => void;
   error?: string;
-  required?: boolean;
   disabled?: boolean;
   placeholder?: string;
   step?: string;
@@ -100,7 +99,6 @@ function MeasurementInputField({
   value,
   onChange,
   error,
-  required = false,
   disabled = false,
   placeholder = "0.0",
   step = "0.1",
@@ -110,7 +108,7 @@ function MeasurementInputField({
     <div className="space-y-2">
       <label htmlFor={id} className="block text-xs font-bold text-gray-700">
         {label}
-        {required && <span className="text-red-500 ml-0.5">*</span>}
+        <span className="text-gray-400 ml-1">(opsional)</span>
       </label>
       <div
         className={`relative rounded-xl border overflow-hidden transition-all shadow-sm ${
@@ -158,7 +156,7 @@ export default function TambahBalitaPage() {
     // Step 1: Identitas Balita
     namaBalita: "",
     nikBalita: "",
-    jenisKelamin: "Laki-laki", // Laki-laki | Perempuan
+    jenisKelamin: "",
     anakKe: "",
     alamat: FIXED_ALAMAT,
     rt: "",
@@ -270,15 +268,15 @@ export default function TambahBalitaPage() {
     const newErrors: { [key: string]: string } = {};
     if (!formData.namaBalita.trim())
       newErrors.namaBalita = "Nama balita wajib diisi";
+    if (!formData.jenisKelamin) {
+      newErrors.jenisKelamin = "Jenis kelamin wajib dipilih";
+    }
     if (formData.nikBalita && formData.nikBalita.length !== NIK_LENGTH) {
       newErrors.nikBalita = "NIK harus terdiri dari 16 digit angka";
     }
-    if (!formData.anakKe) {
-      newErrors.anakKe = "Anak ke- wajib diisi";
-    } else if (parseInt(formData.anakKe) <= 0) {
+    if (formData.anakKe && parseInt(formData.anakKe, 10) <= 0) {
       newErrors.anakKe = "Anak ke- harus lebih besar dari 0";
     }
-    if (!formData.rt.trim()) newErrors.rt = "RT wajib diisi";
 
     setErrors(newErrors);
 
@@ -287,10 +285,10 @@ export default function TambahBalitaPage() {
       document.getElementById("namaBalita")?.focus();
     } else if (newErrors.nikBalita) {
       document.getElementById("nikBalita")?.focus();
+    } else if (newErrors.jenisKelamin) {
+      document.getElementById("jenisKelaminLaki")?.focus();
     } else if (newErrors.anakKe) {
       document.getElementById("anakKe")?.focus();
-    } else if (newErrors.rt) {
-      document.getElementById("rt")?.focus();
     }
 
     return Object.keys(newErrors).length === 0;
@@ -298,7 +296,6 @@ export default function TambahBalitaPage() {
 
   const validateStep2 = () => {
     const newErrors: { [key: string]: string } = {};
-    if (!formData.namaWali.trim()) newErrors.namaWali = "Nama wali wajib diisi";
     if (formData.nikWali && formData.nikWali.length !== NIK_LENGTH) {
       newErrors.nikWali = "NIK wali harus terdiri dari 16 digit angka";
     }
@@ -323,9 +320,7 @@ export default function TambahBalitaPage() {
     setErrors(newErrors);
 
     // Auto-focus first error field
-    if (newErrors.namaWali) {
-      document.getElementById("namaWali")?.focus();
-    } else if (newErrors.nikWali) {
+    if (newErrors.nikWali) {
       document.getElementById("nikWali")?.focus();
     } else if (newErrors.noKk) {
       document.getElementById("noKk")?.focus();
@@ -352,18 +347,19 @@ export default function TambahBalitaPage() {
       }
     }
 
-    // Panjang Lahir Validation
-    if (!formData.panjangLahir) {
-      newErrors.panjangLahir = "Panjang lahir wajib diisi";
-    } else if (parseFloat(formData.panjangLahir) <= 0) {
+    // Optional measurement validation
+    if (
+      formData.panjangLahir &&
+      parseFloat(formData.panjangLahir) <= 0
+    ) {
       newErrors.panjangLahir = "Panjang lahir harus lebih besar dari 0";
     }
 
-    // Berat Lahir Validation
-    if (!formData.beratLahir) {
-      newErrors.beratLahir = "Berat lahir wajib diisi";
-    } else if (parseFloat(formData.beratLahir) <= 0) {
-      newErrors.beratLahir = "Berat lahir harus lebih besar dari 0";
+    if (
+      formData.beratLahir &&
+      parseFloat(formData.beratLahir) < 0.5
+    ) {
+      newErrors.beratLahir = "Berat lahir minimal 0,5 kg";
     }
 
     // Optional field validation (>0 check)
@@ -378,43 +374,35 @@ export default function TambahBalitaPage() {
       newErrors.usiaKehamilan = "Usia kehamilan harus lebih besar dari 0";
     }
 
-    // Pengukuran sekarang
-    if (!formData.panjangSekarang) {
-      newErrors.panjangSekarang = "Panjang/Tinggi sekarang wajib diisi";
-    } else if (parseFloat(formData.panjangSekarang) <= 0) {
+    if (
+      formData.panjangSekarang &&
+      parseFloat(formData.panjangSekarang) <= 0
+    ) {
       newErrors.panjangSekarang =
         "Panjang/Tinggi sekarang harus lebih besar dari 0";
     }
 
-    if (!formData.beratSekarang) {
-      newErrors.beratSekarang = "Berat sekarang wajib diisi";
-    } else if (parseFloat(formData.beratSekarang) <= 0) {
+    if (
+      formData.beratSekarang &&
+      parseFloat(formData.beratSekarang) <= 0
+    ) {
       newErrors.beratSekarang = "Berat sekarang harus lebih besar dari 0";
     }
 
-    if (!formData.lingkarKepalaSekarang) {
-      newErrors.lingkarKepalaSekarang = "Lingkar kepala wajib diisi";
-    } else if (parseFloat(formData.lingkarKepalaSekarang) <= 0) {
+    if (
+      formData.lingkarKepalaSekarang &&
+      parseFloat(formData.lingkarKepalaSekarang) < 0
+    ) {
       newErrors.lingkarKepalaSekarang =
-        "Lingkar kepala harus lebih besar dari 0";
+        "Lingkar kepala tidak boleh kurang dari 0";
     }
 
-    // Lingkar lengan required only if age > 6 months
-    const isOver6Months = ageInMonths !== null && ageInMonths > 6;
-    if (isOver6Months) {
-      if (!formData.lingkarLenganSekarang) {
-        newErrors.lingkarLenganSekarang =
-          "Lingkar lengan wajib diisi untuk balita > 6 bulan";
-      } else if (parseFloat(formData.lingkarLenganSekarang) <= 0) {
-        newErrors.lingkarLenganSekarang =
-          "Lingkar lengan harus lebih besar dari 0";
-      }
-    } else if (
+    if (
       formData.lingkarLenganSekarang &&
-      parseFloat(formData.lingkarLenganSekarang) <= 0
+      parseFloat(formData.lingkarLenganSekarang) < 0
     ) {
       newErrors.lingkarLenganSekarang =
-        "Lingkar lengan harus lebih besar dari 0";
+        "Lingkar lengan tidak boleh kurang dari 0";
     }
 
     setErrors(newErrors);
@@ -469,38 +457,54 @@ export default function TambahBalitaPage() {
       if (validateStep3()) {
         try {
           const whatsapp = getWhatsappPayload(formData.whatsapp);
-
-          await createBalita({
-            nama: formData.namaBalita,
-            nik: formData.nikBalita || undefined,
+          const payload: Record<string, unknown> = {
+            nama: formData.namaBalita.trim(),
             jenisKelamin:
               formData.jenisKelamin === "Laki-laki" ? "LAKI_LAKI" : "PEREMPUAN",
-            namaWali: formData.namaWali,
-            nikWali: formData.nikWali || undefined,
-            noKk: formData.noKk || undefined,
-            noWhatsapp: whatsapp || undefined,
-            alamat: FIXED_ALAMAT,
-            rt: parseInt(formData.rt),
-            rw: parseInt(FIXED_RW, 10),
             tglLahir: formData.tanggalLahir,
-            anakKe: parseInt(formData.anakKe),
-            beratLahir: parseFloat(formData.beratLahir),
-            panjangLahir: parseFloat(formData.panjangLahir),
-            lingkarKepalaLahir: formData.lingkarKepalaLahir
-              ? parseFloat(formData.lingkarKepalaLahir)
-              : null,
-            usiaKehamilan: formData.usiaKehamilan
-              ? parseInt(formData.usiaKehamilan)
-              : null,
-            beratBadanAwal: parseFloat(formData.beratSekarang),
-            tinggiBadanAwal: parseFloat(formData.panjangSekarang),
-            lingkarKepalaAwal: formData.lingkarKepalaSekarang
-              ? parseFloat(formData.lingkarKepalaSekarang)
-              : null,
-            lilaAwal: formData.lingkarLenganSekarang
-              ? parseFloat(formData.lingkarLenganSekarang)
-              : undefined,
-          });
+          };
+
+          if (formData.nikBalita) payload.nik = formData.nikBalita;
+          if (formData.anakKe) payload.anakKe = parseInt(formData.anakKe, 10);
+          if (formData.alamat.trim()) payload.alamat = formData.alamat.trim();
+          if (formData.rt) payload.rt = parseInt(formData.rt, 10);
+          if (formData.rw) payload.rw = parseInt(formData.rw, 10);
+          if (formData.namaWali.trim()) {
+            payload.namaWali = formData.namaWali.trim();
+          }
+          if (formData.nikWali) payload.nikWali = formData.nikWali;
+          if (formData.noKk) payload.noKk = formData.noKk;
+          if (whatsapp) payload.noWhatsapp = whatsapp;
+          if (formData.panjangLahir) {
+            payload.panjangLahir = parseFloat(formData.panjangLahir);
+          }
+          if (formData.beratLahir) {
+            payload.beratLahir = parseFloat(formData.beratLahir);
+          }
+          if (formData.lingkarKepalaLahir) {
+            payload.lingkarKepalaLahir = parseFloat(
+              formData.lingkarKepalaLahir,
+            );
+          }
+          if (formData.usiaKehamilan) {
+            payload.usiaKehamilan = parseInt(formData.usiaKehamilan, 10);
+          }
+          if (formData.beratSekarang) {
+            payload.beratBadanAwal = parseFloat(formData.beratSekarang);
+          }
+          if (formData.panjangSekarang) {
+            payload.tinggiBadanAwal = parseFloat(formData.panjangSekarang);
+          }
+          if (formData.lingkarKepalaSekarang) {
+            payload.lingkarKepalaAwal = parseFloat(
+              formData.lingkarKepalaSekarang,
+            );
+          }
+          if (formData.lingkarLenganSekarang) {
+            payload.lilaAwal = parseFloat(formData.lingkarLenganSekarang);
+          }
+
+          await createBalita(payload);
 
           setShowSuccessModal(true);
         } catch (err: unknown) {
@@ -572,8 +576,8 @@ export default function TambahBalitaPage() {
 
         <div className="mb-6">
           <InfoPanel title="Isi bertahap">
-            Lengkapi data sesuai langkah. Pengukuran awal di langkah terakhir
-            akan otomatis menjadi data pengukuran bulan ini.
+            Hanya nama balita, jenis kelamin, dan tanggal lahir yang wajib
+            diisi. Data lain dapat dilengkapi sekarang atau diperbarui nanti.
           </InfoPanel>
         </div>
 
@@ -637,6 +641,7 @@ export default function TambahBalitaPage() {
                   className="block text-xs font-bold text-gray-700"
                 >
                   NIK bayi / balita
+                  <span className="text-gray-400 ml-1">(opsional)</span>
                 </label>
                 <input
                   type="text"
@@ -667,9 +672,16 @@ export default function TambahBalitaPage() {
                 <label className="block text-xs font-bold text-gray-700">
                   Jenis Kelamin<span className="text-red-500 ml-0.5">*</span>
                 </label>
-                <div className="bg-gray-100 p-1.5 rounded-2xl flex gap-1 border border-gray-50">
+                <div
+                  className={`bg-gray-100 p-1.5 rounded-2xl flex gap-1 border ${
+                    errors.jenisKelamin
+                      ? "border-rose-400"
+                      : "border-gray-50"
+                  }`}
+                >
                   <button
                     type="button"
+                    id="jenisKelaminLaki"
                     onClick={() =>
                       handleInputChange("jenisKelamin", "Laki-laki")
                     }
@@ -695,6 +707,11 @@ export default function TambahBalitaPage() {
                     Perempuan
                   </button>
                 </div>
+                {errors.jenisKelamin && (
+                  <p className="text-[10px] text-rose-500 flex items-center gap-1 font-medium">
+                    <AlertCircle size={10} /> {errors.jenisKelamin}
+                  </p>
+                )}
               </div>
 
               {/* Anak Ke- */}
@@ -703,7 +720,8 @@ export default function TambahBalitaPage() {
                   htmlFor="anakKe"
                   className="block text-xs font-bold text-gray-700"
                 >
-                  Anak ke-<span className="text-red-500 ml-0.5">*</span>
+                  Anak ke-
+                  <span className="text-gray-400 ml-1">(opsional)</span>
                 </label>
                 <input
                   type="number"
@@ -753,7 +771,8 @@ export default function TambahBalitaPage() {
                       htmlFor="rt"
                       className="block text-xs font-bold text-gray-700"
                     >
-                      RT<span className="text-red-500 ml-0.5">*</span>
+                      RT
+                      <span className="text-gray-400 ml-1">(opsional)</span>
                     </label>
                     <input
                       type="text"
@@ -811,7 +830,8 @@ export default function TambahBalitaPage() {
                   htmlFor="namaWali"
                   className="block text-xs font-bold text-gray-700"
                 >
-                  Nama wali<span className="text-red-500 ml-0.5">*</span>
+                  Nama wali
+                  <span className="text-gray-400 ml-1">(opsional)</span>
                 </label>
                 <input
                   type="text"
@@ -841,6 +861,7 @@ export default function TambahBalitaPage() {
                   className="block text-xs font-bold text-gray-700"
                 >
                   NIK Wali
+                  <span className="text-gray-400 ml-1">(opsional)</span>
                 </label>
                 <input
                   type="text"
@@ -1007,7 +1028,6 @@ export default function TambahBalitaPage() {
                   value={formData.panjangLahir}
                   onChange={(value) => handleInputChange("panjangLahir", value)}
                   error={errors.panjangLahir}
-                  required
                 />
 
                 {/* Berat Lahir */}
@@ -1018,7 +1038,6 @@ export default function TambahBalitaPage() {
                   value={formData.beratLahir}
                   onChange={(value) => handleInputChange("beratLahir", value)}
                   error={errors.beratLahir}
-                  required
                   step="0.01"
                   placeholder="0.00"
                 />
@@ -1045,6 +1064,7 @@ export default function TambahBalitaPage() {
                     className="block text-xs font-bold text-gray-700"
                   >
                     Usia Kehamilan
+                    <span className="text-gray-400 ml-1">(opsional)</span>
                   </label>
                   <div className="relative flex rounded-xl border border-gray-200 overflow-hidden focus-within:ring-2 focus-within:ring-teal-500/20 focus-within:border-teal-500 transition-all bg-white shadow-sm">
                     <input
@@ -1082,7 +1102,6 @@ export default function TambahBalitaPage() {
                       handleInputChange("panjangSekarang", value)
                     }
                     error={errors.panjangSekarang}
-                    required
                   />
 
                   {/* Berat Sekarang */}
@@ -1095,7 +1114,6 @@ export default function TambahBalitaPage() {
                       handleInputChange("beratSekarang", value)
                     }
                     error={errors.beratSekarang}
-                    required
                     step="0.01"
                     placeholder="0.00"
                   />
@@ -1113,7 +1131,6 @@ export default function TambahBalitaPage() {
                       handleInputChange("lingkarKepalaSekarang", value)
                     }
                     error={errors.lingkarKepalaSekarang}
-                    required
                   />
 
                   {/* Lingkar Lengan Sekarang */}
@@ -1126,7 +1143,6 @@ export default function TambahBalitaPage() {
                       handleInputChange("lingkarLenganSekarang", value)
                     }
                     error={errors.lingkarLenganSekarang}
-                    required={ageInMonths !== null && ageInMonths > 6}
                     disabled={ageInMonths === null || ageInMonths <= 6}
                     placeholder={
                       ageInMonths === null
@@ -1135,7 +1151,7 @@ export default function TambahBalitaPage() {
                           ? "Tidak wajib (<= 6 bulan)"
                           : "0.0"
                     }
-                    hint="Untuk balita usia > 6 bulan"
+                    hint="Dapat diisi untuk balita usia > 6 bulan"
                   />
                 </div>
               </div>

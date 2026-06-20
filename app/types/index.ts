@@ -15,9 +15,11 @@ export interface Pengukuran {
 export interface Absensi {
   id?: string;
   balitaId: string;
-  bulan: number;
-  tahun: number;
+  bulan?: number;
+  tahun?: number;
+  tglHadir?: string;
   isHadir: boolean;
+  keterangan?: string | null;
   createdAt?: string;
 }
 

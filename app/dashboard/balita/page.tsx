@@ -21,6 +21,7 @@ import {
   PageStatusState,
 } from "@/components/ui/PageParts";
 import { getBalitaList, getPengukuranList } from "@/lib/api";
+import { getMeasuredBalitaIds } from "@/lib/measurement-status";
 import { useCurrentProfile } from "@/lib/useCurrentProfile";
 import { Balita, Pengukuran } from "@/types";
 
@@ -173,9 +174,7 @@ export default function DaftarBalitaPage() {
     [balitaList],
   );
 
-  const measuredBalitaIds = new Set(
-    currentPengukuran.map((pengukuran) => pengukuran.balitaId).filter(Boolean),
-  );
+  const measuredBalitaIds = getMeasuredBalitaIds(currentPengukuran);
   const measuredCount = balitaList.filter((balita) =>
     measuredBalitaIds.has(balita.id),
   ).length;

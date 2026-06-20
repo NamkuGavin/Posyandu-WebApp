@@ -13,6 +13,7 @@ import {
   PageStatusState,
 } from "@/components/ui/PageParts";
 import { getBalitaList, getPengukuranList } from "@/lib/api";
+import { getMeasuredBalitaIds } from "@/lib/measurement-status";
 import { useCurrentProfile } from "@/lib/useCurrentProfile";
 import { Balita, Pengukuran } from "@/types";
 
@@ -55,15 +56,19 @@ function CariBalitaContent() {
   }, [currentMonth, currentYear]);
 
   useEffect(() => {
+    let isActive = true;
     const nameParam = searchParams.get("name");
-    if (nameParam) {
-      setSearchTerm(nameParam);
-    }
+
+    Promise.resolve().then(() => {
+      if (isActive && nameParam) setSearchTerm(nameParam);
+    });
+
+    return () => {
+      isActive = false;
+    };
   }, [searchParams]);
 
-  const measuredBalitaIds = new Set(
-    currentPengukuran.map((pengukuran) => pengukuran.balitaId).filter(Boolean),
-  );
+  const measuredBalitaIds = getMeasuredBalitaIds(currentPengukuran);
 
   const selectableBalitaList = isMeasurementMode
     ? balitaList.filter((balita) => {
