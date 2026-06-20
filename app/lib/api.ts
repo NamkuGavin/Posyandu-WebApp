@@ -4,6 +4,7 @@ import {
   Absensi,
   BerandaStats,
   CreateKaderPayload,
+  GrowthInsightResponse,
   KaderProfile,
   UpdateKaderPayload,
 } from "@/types";
@@ -21,6 +22,18 @@ type RawPengukuran = Record<string, unknown> & {
   lingkarLengan?: unknown;
   lila?: unknown;
   createdAt?: string;
+};
+
+type RawBalitaDetail = Omit<
+  Balita,
+  "nikWali" | "noKk" | "rt" | "rw" | "pengukuran"
+> & {
+  nikWali?: string | null;
+  noKk?: string | null;
+  rt: string | number;
+  rw: string | number;
+  pengukuran?: RawPengukuran[];
+  pengukurans?: RawPengukuran[];
 };
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "");
@@ -87,6 +100,31 @@ function normalizePengukuran(
     lingkarLengan,
     lila: lingkarLengan,
     createdAt: raw?.createdAt,
+  };
+}
+
+function normalizeBalitaDetail(raw: RawBalitaDetail): Balita {
+  const { pengukuran, pengukurans, ...detail } = raw;
+  const normalizedMeasurements = [...(pengukuran ?? []), ...(pengukurans ?? [])]
+    .map((measurement) => normalizePengukuran(measurement))
+    .filter((measurement) => measurement.bulan > 0 && measurement.tahun > 0);
+  const uniqueMeasurements = Array.from(
+    new Map(
+      normalizedMeasurements.map((measurement, index) => [
+        measurement.id ??
+          `${measurement.balitaId}-${measurement.tahun}-${measurement.bulan}-${index}`,
+        measurement,
+      ]),
+    ).values(),
+  );
+
+  return {
+    ...detail,
+    nikWali: raw.nikWali ?? "",
+    noKk: raw.noKk ?? undefined,
+    rt: String(raw.rt),
+    rw: String(raw.rw),
+    pengukuran: uniqueMeasurements,
   };
 }
 
@@ -278,7 +316,8 @@ export async function getBalitaById(id: string): Promise<Balita | null> {
     if (res.status === 404) return null;
     throw new Error("Gagal mengambil detail balita");
   }
-  return res.json();
+  const data = (await res.json()) as RawBalitaDetail;
+  return normalizeBalitaDetail(data);
 }
 
 export async function createBalita(
@@ -459,7 +498,7 @@ export async function exportLaporanExcel(
 
 export async function getEvaluasi(
   balita: Balita,
-): Promise<{ analisis: string }> {
+): Promise<GrowthInsightResponse> {
   const res = await fetch("/api/ai-insight", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -473,7 +512,8 @@ export async function getEvaluasi(
   });
 
   if (!res.ok) {
-    throw new Error("Gagal mengambil evaluasi balita");
+    const data = await res.json().catch(() => null);
+    throw new Error(data?.message || "Gagal mengambil evaluasi balita");
   }
 
   return res.json();
