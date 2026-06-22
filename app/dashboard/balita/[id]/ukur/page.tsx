@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { ArrowLeft, Baby, ChevronDown } from "lucide-react";
+import { ArrowLeft, ChevronDown } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import Navbar from "@/components/layout/Navbar";
-import Card from "@/components/ui/Card";
+import BalitaSummaryCard from "@/components/balita/BalitaSummaryCard";
+import MeasurementInput from "@/components/balita/MeasurementInput";
 import { InfoPanel, PageStatusState } from "@/components/ui/PageParts";
 import {
   getBalitaById,
@@ -13,158 +14,18 @@ import {
 } from "@/lib/api";
 import { useCurrentProfile } from "@/lib/useCurrentProfile";
 import { isCompletedMeasurement } from "@/lib/measurement-status";
+import { MONTH_NAMES } from "@/lib/constants";
+import { calculateAgeInMonths } from "@/lib/date-utils";
+import {
+  getBirthPeriod,
+  getLatestAvailableMonth,
+  getMeasurementMonthOptions,
+  getMeasurementPeriodKey,
+  getMeasurementsByPeriod,
+  getMeasurementYearOptions,
+} from "@/lib/measurement-period";
 import { Balita, Pengukuran } from "@/types";
-
-const MONTH_NAMES = [
-  "Januari",
-  "Februari",
-  "Maret",
-  "April",
-  "Mei",
-  "Juni",
-  "Juli",
-  "Agustus",
-  "September",
-  "Oktober",
-  "November",
-  "Desember",
-];
-
-function calculateAgeInMonths(birthDate: string): number {
-  const birth = new Date(birthDate);
-  const now = new Date();
-  const diffYears = now.getFullYear() - birth.getFullYear();
-  const diffMonths = now.getMonth() - birth.getMonth();
-  return diffYears * 12 + diffMonths;
-}
-
-type MeasurementPeriod = {
-  month: number;
-  year: number;
-};
-
-type MeasurementMonthOption = {
-  label: string;
-  value: number;
-};
-
-function getBirthPeriod(dateString?: string | null): MeasurementPeriod | null {
-  if (!dateString) return null;
-
-  const date = new Date(dateString);
-  if (Number.isNaN(date.getTime())) return null;
-
-  return {
-    month: date.getUTCMonth() + 1,
-    year: date.getUTCFullYear(),
-  };
-}
-
-function getMeasurementYearOptions(
-  birthPeriod: MeasurementPeriod | null,
-  currentYear: number,
-) {
-  if (!birthPeriod || birthPeriod.year > currentYear) return [];
-
-  const years = [];
-  for (let year = currentYear; year >= birthPeriod.year; year -= 1) {
-    years.push(year);
-  }
-
-  return years;
-}
-
-function getMeasurementMonthOptions(
-  year: number,
-  birthPeriod: MeasurementPeriod | null,
-  currentMonth: number,
-  currentYear: number,
-  monthNames: string[],
-): MeasurementMonthOption[] {
-  if (!birthPeriod || year < birthPeriod.year || year > currentYear) {
-    return [];
-  }
-
-  const startMonth = year === birthPeriod.year ? birthPeriod.month : 1;
-  const endMonth = year === currentYear ? currentMonth : 12;
-
-  if (startMonth > endMonth) return [];
-
-  return monthNames
-    .slice(startMonth - 1, endMonth)
-    .map((label, index) => ({
-      label,
-      value: startMonth + index,
-    }));
-}
-
-function getMeasurementPeriodKey(year: number, month: number) {
-  return `${year}-${month}`;
-}
-
-function getLatestAvailableMonth(
-  monthOptions: MeasurementMonthOption[],
-  fallback: number,
-) {
-  return monthOptions[monthOptions.length - 1]?.value ?? fallback;
-}
-
-function getMeasurementsByPeriod(measurements: Pengukuran[] = []) {
-  return measurements.reduce<Record<string, Pengukuran>>(
-    (result, measurement) => {
-      result[getMeasurementPeriodKey(measurement.tahun, measurement.bulan)] =
-        measurement;
-      return result;
-    },
-    {},
-  );
-}
 import { useToast } from "@/components/ui/Toast";
-
-const InputWithSuffix = ({
-  label,
-  suffix,
-  value,
-  onChange,
-  sublabel = "",
-  disabled = false,
-  placeholder = "0.0",
-}: {
-  label: string;
-  suffix: string;
-  value: string;
-  onChange: (val: string) => void;
-  sublabel?: string;
-  disabled?: boolean;
-  placeholder?: string;
-}) => (
-  <div className="space-y-1">
-    <div className="flex justify-between items-end">
-      <label className="text-xs font-bold text-black">{label}</label>
-      {sublabel && <span className="text-[9px] text-gray-400">{sublabel}</span>}
-    </div>
-    <div
-      className={`relative flex rounded-xl border overflow-hidden transition-all shadow-sm ${
-        disabled
-          ? "border-gray-100 bg-gray-50"
-          : "border-gray-200 focus-within:ring-2 focus-within:ring-teal-500/20 focus-within:border-teal-500 bg-white"
-      }`}
-    >
-      <input
-        type="number"
-        step="any"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        disabled={disabled}
-        className="w-full p-3.5 pr-12 text-sm text-black font-bold outline-none bg-transparent placeholder:text-gray-300 disabled:text-gray-400 disabled:cursor-not-allowed"
-      />
-      <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-gray-400">
-        {suffix}
-      </span>
-    </div>
-  </div>
-);
 
 export default function UkurBalitaPage() {
   const params = useParams();
@@ -208,7 +69,6 @@ export default function UkurBalitaPage() {
         birthPeriod,
         currentMonth,
         currentYear,
-        MONTH_NAMES,
       ),
     [birthPeriod, currentMonth, currentYear, selectedYear],
   );
@@ -269,7 +129,6 @@ export default function UkurBalitaPage() {
       birthPeriod,
       currentMonth,
       currentYear,
-      MONTH_NAMES,
     );
     const monthIsAvailable = availableMonths.some(
       (month) => month.value === selectedMonth,
@@ -464,26 +323,7 @@ export default function UkurBalitaPage() {
           absensi.
         </InfoPanel>
 
-        <Card className="p-5 bg-white border border-gray-100 shadow-sm rounded-xl flex items-center gap-4">
-          <div
-            className={`w-12 h-12 rounded-full flex items-center justify-center shrink-0 ${
-              balita.jenisKelamin === "PEREMPUAN"
-                ? "bg-[#fce5f1] text-pink-500"
-                : "bg-[#e5f5fd] text-sky-500"
-            }`}
-          >
-            <Baby size={24} />
-          </div>
-          <div>
-            <h5 className="text-sm font-bold text-black">{balita.nama}</h5>
-            <p className="text-xs text-gray-700 mt-1">
-              {balita.jenisKelamin === "PEREMPUAN" ? "Perempuan" : "Laki-laki"}
-            </p>
-            <p className="text-xs text-gray-700 mt-0.5">
-              {balita.namaWali} • {balita.alamat} RT {balita.rt}/RW {balita.rw}
-            </p>
-          </div>
-        </Card>
+        <BalitaSummaryCard balita={balita} />
 
         <div className="rounded-xl border border-teal-100 bg-[#f0fbf9] p-4 shadow-sm space-y-3">
           <p className="text-[10px] font-bold uppercase tracking-widest text-[#0d9488]">
@@ -500,7 +340,6 @@ export default function UkurBalitaPage() {
                     birthPeriod,
                     currentMonth,
                     currentYear,
-                    MONTH_NAMES,
                   );
 
                   setSelectedYear(year);
@@ -591,35 +430,39 @@ export default function UkurBalitaPage() {
           <p className="text-xs font-bold text-gray-500 ml-1">
             Data Pengukuran
           </p>
-          <InputWithSuffix
+          <MeasurementInput
             label="Panjang / Tinggi"
             suffix="cm"
             value={tinggi}
             onChange={setTinggi}
             disabled={isMeasurementLocked}
+            dense
           />
-          <InputWithSuffix
+          <MeasurementInput
             label="Berat"
             suffix="kg"
             value={berat}
             onChange={setBerat}
             disabled={isMeasurementLocked}
+            dense
           />
-          <InputWithSuffix
+          <MeasurementInput
             label="Lingkar Kepala"
             suffix="cm"
             value={lingkarKepala}
             onChange={setLingkarKepala}
             disabled={isMeasurementLocked}
+            dense
           />
-          <InputWithSuffix
+          <MeasurementInput
             label="Lingkar Lengan Atas"
             suffix="cm"
             value={lingkarLengan}
             onChange={setLingkarLengan}
-            sublabel="Untuk balita usia > 6 bulan"
+            hint="Untuk balita usia > 6 bulan"
             disabled={isLlaDisabled || isMeasurementLocked}
             placeholder={isLlaDisabled ? "Tidak wajib (≤ 6 bulan)" : "0.0"}
+            dense
           />
         </div>
 

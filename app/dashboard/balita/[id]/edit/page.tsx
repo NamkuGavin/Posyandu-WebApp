@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { ArrowLeft, Baby, ChevronDown } from "lucide-react";
+import { ArrowLeft, ChevronDown } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import Navbar from "@/components/layout/Navbar";
-import Card from "@/components/ui/Card";
+import BalitaSummaryCard from "@/components/balita/BalitaSummaryCard";
+import MeasurementInput from "@/components/balita/MeasurementInput";
 import { InfoPanel, PageStatusState } from "@/components/ui/PageParts";
 import {
   getBalitaById,
@@ -13,189 +14,20 @@ import {
 } from "@/lib/api";
 import { useCurrentProfile } from "@/lib/useCurrentProfile";
 import { isCompletedMeasurement } from "@/lib/measurement-status";
+import { MONTH_NAMES, NIK_LENGTH } from "@/lib/constants";
+import { calculateAgeInMonths } from "@/lib/date-utils";
+import { onlyDigits, toOptionalNumber } from "@/lib/form-utils";
+import {
+  getBirthPeriod,
+  getLatestAvailableMonth,
+  getMeasurementFieldValues,
+  getMeasurementMonthOptions,
+  getMeasurementPeriodKey,
+  getMeasurementsByPeriod,
+  getMeasurementYearOptions,
+} from "@/lib/measurement-period";
 import { Balita, Pengukuran } from "@/types";
 import { useToast } from "@/components/ui/Toast";
-
-const MONTH_NAMES = [
-  "Januari",
-  "Februari",
-  "Maret",
-  "April",
-  "Mei",
-  "Juni",
-  "Juli",
-  "Agustus",
-  "September",
-  "Oktober",
-  "November",
-  "Desember",
-];
-const NIK_LENGTH = 16;
-
-function onlyDigits(value: string, maxLength: number) {
-  return value.replace(/\D/g, "").slice(0, maxLength);
-}
-
-function toOptionalNumber(value: string): number | null {
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-
-  const parsed = Number(trimmed);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function calculateAgeInMonths(birthDateString: string): number | null {
-  if (!birthDateString) return null;
-
-  const birthDate = new Date(birthDateString);
-  if (Number.isNaN(birthDate.getTime())) return null;
-
-  const today = new Date();
-  let months =
-    (today.getFullYear() - birthDate.getFullYear()) * 12 +
-    today.getMonth() -
-    birthDate.getMonth();
-
-  if (today.getDate() < birthDate.getDate()) {
-    months -= 1;
-  }
-
-  return Math.max(months, 0);
-}
-
-type MeasurementPeriod = {
-  month: number;
-  year: number;
-};
-
-type MeasurementMonthOption = {
-  label: string;
-  value: number;
-};
-
-function getBirthPeriod(dateString?: string | null): MeasurementPeriod | null {
-  if (!dateString) return null;
-
-  const date = new Date(dateString);
-  if (Number.isNaN(date.getTime())) return null;
-
-  return {
-    month: date.getUTCMonth() + 1,
-    year: date.getUTCFullYear(),
-  };
-}
-
-function getMeasurementYearOptions(
-  birthPeriod: MeasurementPeriod | null,
-  currentYear: number,
-) {
-  if (!birthPeriod || birthPeriod.year > currentYear) return [];
-
-  const years = [];
-  for (let year = currentYear; year >= birthPeriod.year; year -= 1) {
-    years.push(year);
-  }
-
-  return years;
-}
-
-function getMeasurementMonthOptions(
-  year: number,
-  birthPeriod: MeasurementPeriod | null,
-  currentMonth: number,
-  currentYear: number,
-): MeasurementMonthOption[] {
-  if (!birthPeriod || year < birthPeriod.year || year > currentYear) {
-    return [];
-  }
-
-  const startMonth = year === birthPeriod.year ? birthPeriod.month : 1;
-  const endMonth = year === currentYear ? currentMonth : 12;
-
-  if (startMonth > endMonth) return [];
-
-  return MONTH_NAMES.slice(startMonth - 1, endMonth).map((label, index) => ({
-    label,
-    value: startMonth + index,
-  }));
-}
-
-function getMeasurementPeriodKey(year: number, month: number) {
-  return `${year}-${month}`;
-}
-
-function getLatestAvailableMonth(
-  monthOptions: MeasurementMonthOption[],
-  fallback: number,
-) {
-  return monthOptions[monthOptions.length - 1]?.value ?? fallback;
-}
-
-function getMeasurementsByPeriod(measurements: Pengukuran[] = []) {
-  return measurements.reduce<Record<string, Pengukuran>>(
-    (result, measurement) => {
-      result[getMeasurementPeriodKey(measurement.tahun, measurement.bulan)] =
-        measurement;
-      return result;
-    },
-    {},
-  );
-}
-
-function getMeasurementFieldValues(measurement?: Pengukuran | null) {
-  return {
-    panjang: measurement?.tinggiBadan?.toString() || "",
-    berat: measurement?.beratBadan?.toString() || "",
-    lingkarKepala: measurement?.lingkarKepala?.toString() || "",
-    lingkarLengan: measurement?.lingkarLengan?.toString() || "",
-  };
-}
-
-type MeasurementEditInputProps = {
-  label: string;
-  suffix: string;
-  value: string;
-  onChange: (value: string) => void;
-  disabled?: boolean;
-  placeholder?: string;
-  hint?: string;
-};
-
-function MeasurementEditInput({
-  label,
-  suffix,
-  value,
-  onChange,
-  disabled = false,
-  placeholder = "0.0",
-  hint,
-}: MeasurementEditInputProps) {
-  return (
-    <div className="space-y-1">
-      <label className="text-xs font-bold text-black">{label}</label>
-      <div
-        className={`relative rounded-xl border overflow-hidden transition-all shadow-sm ${
-          disabled
-            ? "border-gray-100 bg-gray-50"
-            : "border-gray-200 bg-white focus-within:ring-1 focus-within:ring-teal-500"
-        }`}
-      >
-        <input
-          type="number"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={placeholder}
-          disabled={disabled}
-          className="w-full p-3.5 pr-12 text-sm text-black font-bold outline-none bg-transparent placeholder:text-gray-300 disabled:text-gray-400 disabled:cursor-not-allowed"
-        />
-        <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-gray-400 pointer-events-none">
-          {suffix}
-        </span>
-      </div>
-      {hint && <p className="text-[10px] font-medium text-gray-400">{hint}</p>}
-    </div>
-  );
-}
 
 export default function EditBalitaPage() {
   const params = useParams();
@@ -613,26 +445,7 @@ export default function EditBalitaPage() {
           lewat halaman Input Pengukuran.
         </InfoPanel>
 
-        <Card className="p-5 bg-white border border-gray-100 shadow-sm rounded-xl flex items-center gap-4">
-          <div
-            className={`w-12 h-12 rounded-full flex items-center justify-center shrink-0 ${
-              balita.jenisKelamin === "PEREMPUAN"
-                ? "bg-[#fce5f1] text-pink-500"
-                : "bg-[#e5f5fd] text-sky-500"
-            }`}
-          >
-            <Baby size={24} />
-          </div>
-          <div>
-            <h5 className="text-sm font-bold text-black">{balita.nama}</h5>
-            <p className="text-xs text-gray-700 mt-1">
-              {balita.jenisKelamin === "PEREMPUAN" ? "Perempuan" : "Laki-laki"}
-            </p>
-            <p className="text-xs text-gray-700 mt-0.5">
-              {balita.namaWali} • {balita.alamat} RT {balita.rt}/RW {balita.rw}
-            </p>
-          </div>
-        </Card>
+        <BalitaSummaryCard balita={balita} />
 
         {/* Two Column Grid on Desktop */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -879,31 +692,34 @@ export default function EditBalitaPage() {
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <MeasurementEditInput
+                <MeasurementInput
                   label="Panjang"
                   suffix="cm"
                   value={panjangPengukuran}
                   onChange={setPanjangPengukuran}
                   disabled={isMeasurementMissing}
+                  dense
                 />
 
-                <MeasurementEditInput
+                <MeasurementInput
                   label="Berat"
                   suffix="kg"
                   value={beratPengukuran}
                   onChange={setBeratPengukuran}
                   disabled={isMeasurementMissing}
+                  dense
                 />
 
-                <MeasurementEditInput
+                <MeasurementInput
                   label="L. Kepala"
                   suffix="cm"
                   value={lingkarKepalaPengukuran}
                   onChange={setLingkarKepalaPengukuran}
                   disabled={isMeasurementMissing}
+                  dense
                 />
 
-                <MeasurementEditInput
+                <MeasurementInput
                   label="L. Lengan"
                   suffix="cm"
                   value={isLilaDisabled ? "" : lingkarLenganPengukuran}
@@ -911,6 +727,7 @@ export default function EditBalitaPage() {
                   placeholder={isLilaDisabled ? "Tidak wajib" : "0.0"}
                   disabled={isLilaDisabled || isMeasurementMissing}
                   hint="Hanya untuk balita usia > 6 bulan"
+                  dense
                 />
               </div>
             </div>

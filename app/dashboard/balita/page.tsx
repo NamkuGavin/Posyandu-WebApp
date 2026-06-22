@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Baby,
   Check,
@@ -20,10 +20,14 @@ import {
   PageHeader,
   PageStatusState,
 } from "@/components/ui/PageParts";
-import { getBalitaList, getPengukuranList } from "@/lib/api";
+import {
+  calculateAgeInMonths,
+  formatAgeInMonths,
+} from "@/lib/date-utils";
 import { getMeasuredBalitaIds } from "@/lib/measurement-status";
 import { useCurrentProfile } from "@/lib/useCurrentProfile";
-import { Balita, Pengukuran } from "@/types";
+import { usePeriodData } from "@/lib/usePeriodData";
+import { Balita } from "@/types";
 
 type GenderFilter = "SEMUA" | Balita["jenisKelamin"];
 type AgeUnit = "bulan" | "tahun";
@@ -66,23 +70,6 @@ const SORT_OPTIONS: { label: string; value: SortOrder; description: string }[] =
     { label: "Z ke A", value: "desc", description: "Nama dari abjad akhir" },
   ];
 
-function calculateAgeInMonths(birthDateString: string): number {
-  const birthDate = new Date(birthDateString);
-  if (Number.isNaN(birthDate.getTime())) return 0;
-
-  const today = new Date();
-  let months =
-    (today.getFullYear() - birthDate.getFullYear()) * 12 +
-    today.getMonth() -
-    birthDate.getMonth();
-
-  if (today.getDate() < birthDate.getDate()) {
-    months -= 1;
-  }
-
-  return Math.max(months, 0);
-}
-
 function getBirthYear(birthDateString: string): string {
   const birthDate = new Date(birthDateString);
   if (Number.isNaN(birthDate.getTime())) return "-";
@@ -90,7 +77,7 @@ function getBirthYear(birthDateString: string): string {
 }
 
 function getAgeFilterValue(balita: Balita, unit: AgeUnit): number {
-  const ageInMonths = calculateAgeInMonths(balita.tglLahir);
+  const ageInMonths = calculateAgeInMonths(balita.tglLahir) ?? 0;
   return unit === "tahun" ? Math.floor(ageInMonths / 12) : ageInMonths;
 }
 
@@ -101,22 +88,11 @@ function parseFilterNumber(value: string): number | null {
 }
 
 function formatAgeLabel(birthDateString: string): string {
-  const ageInMonths = calculateAgeInMonths(birthDateString);
-  const years = Math.floor(ageInMonths / 12);
-  const months = ageInMonths % 12;
-
-  if (years === 0) return `${months} bulan`;
-  if (months === 0) return `${years} tahun`;
-  return `${years} tahun ${months} bulan`;
+  return formatAgeInMonths(calculateAgeInMonths(birthDateString) ?? 0);
 }
 
 export default function DaftarBalitaPage() {
   const [searchTerm, setSearchTerm] = useState("");
-  const [balitaList, setBalitaList] = useState<Balita[]>([]);
-  const [currentPengukuran, setCurrentPengukuran] = useState<Pengukuran[]>([]);
-  const [loadState, setLoadState] = useState<"loading" | "success" | "error">(
-    "loading",
-  );
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [appliedFilters, setAppliedFilters] =
     useState<BalitaFilters>(EMPTY_FILTERS);
@@ -125,30 +101,11 @@ export default function DaftarBalitaPage() {
   const { isAdmin, isLoading: isRoleLoading } = useCurrentProfile();
   const currentMonth = new Date().getMonth() + 1;
   const currentYear = new Date().getFullYear();
-
-  useEffect(() => {
-    let isActive = true;
-
-    Promise.resolve().then(() => {
-      if (isActive) setLoadState("loading");
-    });
-
-    Promise.all([getBalitaList(), getPengukuranList(currentMonth, currentYear)])
-      .then(([balitaData, pengukuranData]) => {
-        if (!isActive) return;
-        setBalitaList(balitaData);
-        setCurrentPengukuran(pengukuranData);
-        setLoadState("success");
-      })
-      .catch((err) => {
-        console.error(err);
-        if (isActive) setLoadState("error");
-      });
-
-    return () => {
-      isActive = false;
-    };
-  }, [currentMonth, currentYear]);
+  const {
+    balita: balitaList,
+    loadState,
+    measurements: currentPengukuran,
+  } = usePeriodData(currentMonth, currentYear);
 
   const rtOptions = useMemo(
     () =>

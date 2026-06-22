@@ -4,147 +4,31 @@ import { useState, useEffect } from "react";
 import {
   ArrowLeft,
   Calendar,
-  CheckCircle2,
   ChevronRight,
   AlertCircle,
-  Sparkles,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Navbar from "@/components/layout/Navbar";
 import Card from "@/components/ui/Card";
 import { InfoPanel, PageStatusState } from "@/components/ui/PageParts";
+import { useToast } from "@/components/ui/Toast";
+import MeasurementInput from "@/components/balita/MeasurementInput";
+import TambahBalitaSuccessDialog from "@/components/balita/TambahBalitaSuccessDialog";
 import { createBalita } from "@/lib/api";
+import { NIK_LENGTH, POSYANDU_DEFAULTS } from "@/lib/constants";
+import { calculateAgeInMonths, formatAgeDetailed } from "@/lib/date-utils";
+import {
+  getWhatsappPayload,
+  normalizeWhatsappLocalInput,
+  onlyDigits,
+  validateOptionalWhatsapp,
+  WHATSAPP_INPUT_MAX_LENGTH,
+} from "@/lib/form-utils";
 import { useCurrentProfile } from "@/lib/useCurrentProfile";
-
-const FIXED_ALAMAT = "Kecamatan Sidorejo Kidul";
-const FIXED_RW = "09";
-const NIK_LENGTH = 16;
-const PHONE_MIN_LENGTH = 10;
-const PHONE_MAX_LENGTH = 13;
-const WHATSAPP_LOCAL_MAX_LENGTH = PHONE_MAX_LENGTH - 1;
-const WHATSAPP_INPUT_MAX_LENGTH = PHONE_MAX_LENGTH + 3;
-const PHONE_NUMBER_PATTERN = /^(08|62|\+62)[0-9]{9,13}$/;
-
-function onlyDigits(value: string, maxLength: number) {
-  return value.replace(/\D/g, "").slice(0, maxLength);
-}
-
-function normalizeWhatsappLocalInput(value: string) {
-  const trimmed = value.trim();
-  let digits = trimmed.startsWith("+62")
-    ? trimmed.slice(3).replace(/\D/g, "")
-    : trimmed.replace(/\D/g, "");
-
-  if (digits.startsWith("62")) {
-    digits = digits.slice(2);
-  }
-
-  if (digits.startsWith("0")) {
-    digits = digits.slice(1);
-  }
-
-  return digits.slice(0, WHATSAPP_LOCAL_MAX_LENGTH);
-}
-
-function getWhatsappPayload(localNumber: string) {
-  const normalized = normalizeWhatsappLocalInput(localNumber);
-  return normalized ? `0${normalized}` : "";
-}
-
-function formatAgeDetailed(birthDateString: string): string {
-  if (!birthDateString) return "";
-  const birthDate = new Date(birthDateString);
-  const today = new Date();
-
-  let years = today.getFullYear() - birthDate.getFullYear();
-  let months = today.getMonth() - birthDate.getMonth();
-  let days = today.getDate() - birthDate.getDate();
-
-  if (days < 0) {
-    const prevMonth = new Date(today.getFullYear(), today.getMonth(), 0);
-    days += prevMonth.getDate();
-    months--;
-  }
-
-  if (months < 0) {
-    months += 12;
-    years--;
-  }
-
-  const parts = [];
-  if (years > 0) parts.push(`${years} tahun`);
-  if (months > 0) parts.push(`${months} bulan`);
-  if (days > 0 || parts.length === 0) parts.push(`${days} hari`);
-
-  return parts.join(" ");
-}
-
-type MeasurementInputFieldProps = {
-  id: string;
-  label: string;
-  suffix: string;
-  value: string;
-  onChange: (value: string) => void;
-  error?: string;
-  disabled?: boolean;
-  placeholder?: string;
-  step?: string;
-  hint?: string;
-};
-
-function MeasurementInputField({
-  id,
-  label,
-  suffix,
-  value,
-  onChange,
-  error,
-  disabled = false,
-  placeholder = "0.0",
-  step = "0.1",
-  hint,
-}: MeasurementInputFieldProps) {
-  return (
-    <div className="space-y-2">
-      <label htmlFor={id} className="block text-xs font-bold text-gray-700">
-        {label}
-        <span className="text-gray-400 ml-1">(opsional)</span>
-      </label>
-      <div
-        className={`relative rounded-xl border overflow-hidden transition-all shadow-sm ${
-          disabled
-            ? "border-gray-100 bg-gray-50"
-            : error
-              ? "border-rose-400 bg-white focus-within:ring-2 focus-within:ring-rose-200"
-              : "border-gray-200 bg-white focus-within:ring-2 focus-within:ring-teal-500/20 focus-within:border-teal-500"
-        }`}
-      >
-        <input
-          type="number"
-          id={id}
-          step={step}
-          placeholder={placeholder}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          disabled={disabled}
-          className="w-full px-3 py-3 pr-12 outline-none text-sm text-black bg-transparent disabled:text-gray-400 disabled:cursor-not-allowed placeholder:text-gray-300"
-        />
-        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-gray-500 pointer-events-none">
-          {suffix}
-        </span>
-      </div>
-      {hint && <span className="block text-[9px] text-gray-400">{hint}</span>}
-      {error && (
-        <p className="text-[10px] text-rose-500 flex items-center gap-1 font-medium">
-          <AlertCircle size={10} /> {error}
-        </p>
-      )}
-    </div>
-  );
-}
 
 export default function TambahBalitaPage() {
   const router = useRouter();
+  const { error } = useToast();
   const { isAdmin, isLoading: isRoleLoading } = useCurrentProfile();
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
@@ -158,9 +42,9 @@ export default function TambahBalitaPage() {
     nikBalita: "",
     jenisKelamin: "",
     anakKe: "",
-    alamat: FIXED_ALAMAT,
+    alamat: POSYANDU_DEFAULTS.alamat,
     rt: "",
-    rw: FIXED_RW,
+    rw: POSYANDU_DEFAULTS.rw,
 
     // Step 2: Data Wali
     namaWali: "",
@@ -182,39 +66,7 @@ export default function TambahBalitaPage() {
     lingkarLenganSekarang: "",
   });
 
-  // Dynamic age calculation in months
-  const [ageInMonths, setAgeInMonths] = useState<number | null>(null);
-
-  useEffect(() => {
-    let isActive = true;
-
-    Promise.resolve().then(() => {
-      if (!isActive) return;
-
-      if (!formData.tanggalLahir) {
-        setAgeInMonths(null);
-        return;
-      }
-
-      const birthDate = new Date(formData.tanggalLahir);
-      const today = new Date();
-
-      const years = today.getFullYear() - birthDate.getFullYear();
-      let months = today.getMonth() - birthDate.getMonth();
-
-      if (today.getDate() < birthDate.getDate()) {
-        months--;
-      }
-
-      const totalMonths = years * 12 + months;
-      const finalMonths = totalMonths >= 0 ? totalMonths : 0;
-      setAgeInMonths(finalMonths);
-    });
-
-    return () => {
-      isActive = false;
-    };
-  }, [formData.tanggalLahir]);
+  const ageInMonths = calculateAgeInMonths(formData.tanggalLahir);
 
   // Clear lingkar lengan when age is 6 months or under
   useEffect(() => {
@@ -303,17 +155,8 @@ export default function TambahBalitaPage() {
       newErrors.noKk = "No. KK harus terdiri dari 16 digit angka";
     }
     if (formData.whatsapp.trim()) {
-      const whatsappPayload = getWhatsappPayload(formData.whatsapp);
-      const savedPhoneLength = whatsappPayload.length;
-      if (
-        savedPhoneLength < PHONE_MIN_LENGTH ||
-        savedPhoneLength > PHONE_MAX_LENGTH
-      ) {
-        newErrors.whatsapp = "Nomor WhatsApp harus 10-13 digit jika diisi";
-      } else if (!PHONE_NUMBER_PATTERN.test(whatsappPayload)) {
-        newErrors.whatsapp =
-          "Nomor WhatsApp harus mengikuti format 08, 62, atau +62";
-      }
+      const whatsappError = validateOptionalWhatsapp(formData.whatsapp);
+      if (whatsappError) newErrors.whatsapp = whatsappError;
     }
 
     setErrors(newErrors);
@@ -494,9 +337,11 @@ export default function TambahBalitaPage() {
           await createBalita(payload);
 
           setShowSuccessModal(true);
-        } catch (err: unknown) {
-          alert(
-            err instanceof Error ? err.message : "Gagal mendaftarkan balita.",
+        } catch (requestError: unknown) {
+          error(
+            requestError instanceof Error
+              ? requestError.message
+              : "Gagal mendaftarkan balita.",
           );
         }
       }
@@ -1006,20 +851,22 @@ export default function TambahBalitaPage() {
               {/* Grid 2 Columns: Panjang Lahir & Berat Lahir */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {/* Panjang Lahir */}
-                <MeasurementInputField
+                <MeasurementInput
                   id="panjangLahir"
                   label="Panjang Lahir"
                   suffix="cm"
+                  optional
                   value={formData.panjangLahir}
                   onChange={(value) => handleInputChange("panjangLahir", value)}
                   error={errors.panjangLahir}
                 />
 
                 {/* Berat Lahir */}
-                <MeasurementInputField
+                <MeasurementInput
                   id="beratLahir"
                   label="Berat Lahir"
                   suffix="kg"
+                  optional
                   value={formData.beratLahir}
                   onChange={(value) => handleInputChange("beratLahir", value)}
                   error={errors.beratLahir}
@@ -1031,10 +878,11 @@ export default function TambahBalitaPage() {
               {/* Grid 2 Columns: Lingkar Kepala Lahir & Usia Kehamilan */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {/* Lingkar Kepala Lahir */}
-                <MeasurementInputField
+                <MeasurementInput
                   id="lingkarKepalaLahir"
                   label="Lingkar Kepala Lahir"
                   suffix="cm"
+                  optional
                   value={formData.lingkarKepalaLahir}
                   onChange={(value) =>
                     handleInputChange("lingkarKepalaLahir", value)
@@ -1078,10 +926,11 @@ export default function TambahBalitaPage() {
                 {/* Grid 2 Columns: Panjang Sekarang & Berat Sekarang */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {/* Panjang Sekarang */}
-                  <MeasurementInputField
+                  <MeasurementInput
                     id="panjangSekarang"
                     label="Panjang/Tinggi Sekarang"
                     suffix="cm"
+                    optional
                     value={formData.panjangSekarang}
                     onChange={(value) =>
                       handleInputChange("panjangSekarang", value)
@@ -1090,10 +939,11 @@ export default function TambahBalitaPage() {
                   />
 
                   {/* Berat Sekarang */}
-                  <MeasurementInputField
+                  <MeasurementInput
                     id="beratSekarang"
                     label="Berat Sekarang"
                     suffix="kg"
+                    optional
                     value={formData.beratSekarang}
                     onChange={(value) =>
                       handleInputChange("beratSekarang", value)
@@ -1107,10 +957,11 @@ export default function TambahBalitaPage() {
                 {/* Grid 2 Columns: Lingkar Kepala & Lingkar Lengan */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {/* Lingkar Kepala Sekarang */}
-                  <MeasurementInputField
+                  <MeasurementInput
                     id="lingkarKepalaSekarang"
                     label="Lingkar Kepala"
                     suffix="cm"
+                    optional
                     value={formData.lingkarKepalaSekarang}
                     onChange={(value) =>
                       handleInputChange("lingkarKepalaSekarang", value)
@@ -1119,10 +970,11 @@ export default function TambahBalitaPage() {
                   />
 
                   {/* Lingkar Lengan Sekarang */}
-                  <MeasurementInputField
+                  <MeasurementInput
                     id="lingkarLenganSekarang"
                     label="Lingkar lengan"
                     suffix="cm"
+                    optional
                     value={formData.lingkarLenganSekarang}
                     onChange={(value) =>
                       handleInputChange("lingkarLenganSekarang", value)
@@ -1196,80 +1048,15 @@ export default function TambahBalitaPage() {
           </div>
         </form>
 
-        {/* HIGH-FIDELITY SUCCESS MODAL */}
-        {showSuccessModal && (
-          <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-300">
-            <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-sm w-full text-center shadow-2xl relative overflow-hidden border border-teal-50/50 animate-in zoom-in-95 slide-in-from-bottom-8 duration-300">
-              {/* Decorative particles */}
-              <div className="absolute top-4 left-6 text-teal-400 animate-bounce">
-                <Sparkles size={20} />
-              </div>
-              <div className="absolute bottom-6 right-6 text-[#1fb999] opacity-75">
-                <Sparkles size={16} />
-              </div>
-
-              {/* Success Checkmark Circle */}
-              <div className="mx-auto w-16 h-16 bg-[#e6fbf5] rounded-full flex items-center justify-center mb-5 shadow-inner">
-                <CheckCircle2 size={38} className="text-[#0d9488]" />
-              </div>
-
-              {/* Success message */}
-              <h3 className="text-lg font-black text-black mb-2">
-                Pendaftaran Berhasil! 🎉
-              </h3>
-              <p className="text-xs text-gray-600 leading-relaxed mb-6">
-                Data balita <strong>{formData.namaBalita}</strong> telah
-                berhasil ditambahkan ke Posyandu ILP Ceria 9.
-              </p>
-
-              {/* Info Recap */}
-              <div className="bg-[#f8f9fa] rounded-2xl p-4 text-left space-y-2 mb-6 border border-gray-100">
-                <div className="flex justify-between text-xs">
-                  <span className="text-gray-500 font-semibold">
-                    Nama Balita
-                  </span>
-                  <span className="text-black font-black truncate max-w-[160px]">
-                    {formData.namaBalita}
-                  </span>
-                </div>
-                <div className="flex justify-between text-xs">
-                  <span className="text-gray-500 font-semibold">
-                    Jenis Kelamin
-                  </span>
-                  <span className="text-black font-black">
-                    {formData.jenisKelamin}
-                  </span>
-                </div>
-                <div className="flex justify-between text-xs">
-                  <span className="text-gray-500 font-semibold">Usia</span>
-                  <span className="text-black font-black">
-                    {formatAgeDetailed(formData.tanggalLahir)}
-                  </span>
-                </div>
-                <div className="flex justify-between text-xs">
-                  <span className="text-gray-500 font-semibold">Wali</span>
-                  <span className="text-black font-black truncate max-w-[160px]">
-                    {formData.namaWali}
-                  </span>
-                </div>
-              </div>
-
-              {/* Redirect timer */}
-              <div className="flex items-center justify-center gap-2 text-xs text-gray-400 font-semibold">
-                <span className="inline-block w-2 h-2 rounded-full bg-teal-500 animate-ping"></span>
-                Kembali ke Beranda dalam {countdown} detik...
-              </div>
-
-              <button
-                type="button"
-                onClick={() => router.push("/dashboard/balita")}
-                className="w-full mt-5 bg-[#12b8a6] hover:bg-[#0d9488] active:scale-[0.99] text-white font-bold py-3 px-6 rounded-xl transition-all cursor-pointer text-xs sm:text-sm shadow-sm"
-              >
-                Lihat Daftar Balita Sekarang
-              </button>
-            </div>
-          </div>
-        )}
+        <TambahBalitaSuccessDialog
+          isOpen={showSuccessModal}
+          balitaName={formData.namaBalita}
+          gender={formData.jenisKelamin}
+          birthDate={formData.tanggalLahir}
+          guardianName={formData.namaWali}
+          countdown={countdown}
+          onViewList={() => router.push("/dashboard/balita")}
+        />
       </main>
     </div>
   );
