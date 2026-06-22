@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
   AlertCircle,
   BarChart3,
@@ -12,263 +12,28 @@ import {
   MapPinned,
   Ruler,
   UserRound,
-  type LucideIcon,
 } from "lucide-react";
 import Navbar from "@/components/layout/Navbar";
 import Card from "@/components/ui/Card";
+import MetricCard from "@/components/dashboard/MetricCard";
+import ProgressMetric from "@/components/dashboard/ProgressMetric";
+import GenderPieSummary, {
+  GenderChartDatum,
+} from "@/components/laporan/GenderPieSummary";
 import { PageStatusState } from "@/components/ui/PageParts";
 import {
-  getBalitaList,
-  getAbsensiList,
   exportLaporanExcel,
-  getPengukuranList,
 } from "@/lib/api";
-import { Balita, Absensi, Pengukuran } from "@/types";
 import { useToast } from "@/components/ui/Toast";
 import {
   getEffectiveAttendance,
   getMeasuredBalitaIds,
 } from "@/lib/measurement-status";
-import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
-
-const months = [
-  "Januari",
-  "Februari",
-  "Maret",
-  "April",
-  "Mei",
-  "Juni",
-  "Juli",
-  "Agustus",
-  "September",
-  "Oktober",
-  "November",
-  "Desember",
-];
-
-const shortMonths = [
-  "Jan",
-  "Feb",
-  "Mar",
-  "Apr",
-  "Mei",
-  "Jun",
-  "Jul",
-  "Ags",
-  "Sep",
-  "Okt",
-  "Nov",
-  "Des",
-];
-
-const formatPercent = (value: number) => {
-  if (!Number.isFinite(value)) return "0";
-  return Number.isInteger(value) ? value.toString() : value.toFixed(1);
-};
-
-const StatCard = ({
-  label,
-  value,
-  caption,
-  icon: Icon,
-  tone,
-}: {
-  label: string;
-  value: string | number;
-  caption: string;
-  icon: LucideIcon;
-  tone: string;
-}) => (
-  <Card className="p-4 sm:p-5 rounded-xl border-gray-100">
-    <div className="flex items-start justify-between gap-3">
-      <div>
-        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-          {label}
-        </p>
-        <p className="text-2xl sm:text-3xl font-black text-gray-950 mt-2">
-          {value}
-        </p>
-      </div>
-      <div
-        className={`w-10 h-10 rounded-xl flex items-center justify-center ${tone}`}
-      >
-        <Icon size={20} strokeWidth={2.5} />
-      </div>
-    </div>
-    <p className="text-[11px] font-semibold text-gray-500 mt-3 leading-relaxed">
-      {caption}
-    </p>
-  </Card>
-);
-
-const ProgressStat = ({
-  label,
-  value,
-  helper,
-  color,
-}: {
-  label: string;
-  value: number;
-  helper: string;
-  color: string;
-}) => (
-  <div className="space-y-2">
-    <div className="flex items-center justify-between gap-4">
-      <div>
-        <p className="text-xs font-bold text-gray-800">{label}</p>
-        <p className="text-[11px] font-semibold text-gray-500 mt-0.5">
-          {helper}
-        </p>
-      </div>
-      <span className="text-sm font-black text-gray-950">
-        {formatPercent(value)}%
-      </span>
-    </div>
-    <div className="h-3 w-full bg-gray-100 rounded-full overflow-hidden">
-      <div
-        className={`h-full rounded-full transition-all duration-700 ${color}`}
-        style={{ width: `${Math.min(value, 100)}%` }}
-      />
-    </div>
-  </div>
-);
-
-type GenderChartDatum = {
-  name: "Laki-laki" | "Perempuan";
-  value: number;
-  color: string;
-};
-
-const GenderPieSummary = ({
-  title,
-  description,
-  data,
-  emptyMessage,
-  icon: Icon,
-}: {
-  title: string;
-  description: string;
-  data: GenderChartDatum[];
-  emptyMessage: string;
-  icon: LucideIcon;
-}) => {
-  const [mounted, setMounted] = useState(false);
-  const total = data.reduce((sum, item) => sum + item.value, 0);
-
-  useEffect(() => {
-    let isActive = true;
-
-    Promise.resolve().then(() => {
-      if (isActive) setMounted(true);
-    });
-
-    return () => {
-      isActive = false;
-    };
-  }, []);
-
-  return (
-    <Card className="min-w-0 p-5 rounded-xl">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h3 className="text-sm font-black text-gray-900">{title}</h3>
-          <p className="text-xs font-medium leading-relaxed text-gray-500 mt-1">
-            {description}
-          </p>
-        </div>
-        <Icon size={22} className="text-[#0d9488] shrink-0" />
-      </div>
-
-      {!mounted ? (
-        <div className="h-[250px] mt-4 rounded-xl bg-gray-50 animate-pulse" />
-      ) : total === 0 ? (
-        <div className="h-[250px] mt-4 flex items-center justify-center rounded-xl border border-dashed border-gray-200 bg-gray-50 px-6 text-center">
-          <p className="text-xs font-bold leading-relaxed text-gray-400">
-            {emptyMessage}
-          </p>
-        </div>
-      ) : (
-        <>
-          <div className="relative mt-3 h-[250px] w-full min-w-0">
-            <ResponsiveContainer
-              width="100%"
-              height="100%"
-              minWidth={0}
-              minHeight={250}
-              initialDimension={{ width: 320, height: 250 }}
-            >
-              <PieChart>
-                <Pie
-                  data={data}
-                  dataKey="value"
-                  nameKey="name"
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={54}
-                  outerRadius={88}
-                  paddingAngle={3}
-                  stroke="#ffffff"
-                  strokeWidth={3}
-                >
-                  {data.map((item) => (
-                    <Cell key={item.name} fill={item.color} />
-                  ))}
-                </Pie>
-                <Tooltip
-                  formatter={(value) => [`${value} balita`, "Jumlah"]}
-                  contentStyle={{
-                    borderRadius: 8,
-                    borderColor: "#e5e7eb",
-                    fontSize: 12,
-                    fontWeight: 700,
-                  }}
-                />
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-              <span className="text-3xl font-black text-gray-950">{total}</span>
-              <span className="text-[10px] font-bold uppercase text-gray-400">
-                Balita
-              </span>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-10">
-            {data.map((item) => {
-              const percentage =
-                total > 0 ? Number(((item.value / total) * 100).toFixed(1)) : 0;
-
-              return (
-                <div
-                  key={item.name}
-                  className="flex items-center justify-between gap-3 border-t border-gray-100 pt-3"
-                >
-                  <div className="flex min-w-0 items-center gap-2">
-                    <span
-                      className="h-3 w-3 rounded-sm shrink-0"
-                      style={{ backgroundColor: item.color }}
-                    />
-                    <span className="truncate text-xs font-bold text-gray-700">
-                      {item.name}
-                    </span>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-black text-gray-950">
-                      {item.value}
-                    </p>
-                    <p className="text-[10px] font-bold text-gray-400">
-                      {formatPercent(percentage)}%
-                    </p>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </>
-      )}
-    </Card>
-  );
-};
+import {
+  MONTH_NAMES as months,
+  SHORT_MONTH_NAMES as shortMonths,
+} from "@/lib/constants";
+import { usePeriodData } from "@/lib/usePeriodData";
 
 export default function LaporanPage() {
   const currentYear = new Date().getFullYear();
@@ -279,46 +44,19 @@ export default function LaporanPage() {
 
   const [selectedMonth, setSelectedMonth] = useState(currentMonth);
   const [selectedYear, setSelectedYear] = useState(currentYear.toString());
-  const [balitaList, setBalitaList] = useState<Balita[]>([]);
-  const [absenList, setAbsenList] = useState<Absensi[]>([]);
-  const [pengukuranList, setPengukuranList] = useState<Pengukuran[]>([]);
-  const [loadState, setLoadState] = useState<"loading" | "success" | "error">(
-    "loading",
-  );
   const { success, error } = useToast();
   const selectedYearNumber = parseInt(selectedYear);
+  const {
+    attendance: absenList,
+    balita: balitaList,
+    loadState,
+    measurements: pengukuranList,
+  } = usePeriodData(selectedMonth, selectedYearNumber, {
+    includeAttendance: true,
+  });
   const availableMonths =
     selectedYearNumber === currentYear ? months.slice(0, currentMonth) : months;
   const selectedMonthName = months[selectedMonth - 1];
-
-  useEffect(() => {
-    let isActive = true;
-
-    Promise.resolve().then(() => {
-      if (isActive) setLoadState("loading");
-    });
-
-    Promise.all([
-      getBalitaList(),
-      getAbsensiList(selectedMonth, selectedYearNumber),
-      getPengukuranList(selectedMonth, selectedYearNumber),
-    ])
-      .then(([balitaData, absensiData, pengukuranData]) => {
-        if (!isActive) return;
-        setBalitaList(balitaData);
-        setAbsenList(absensiData);
-        setPengukuranList(pengukuranData);
-        setLoadState("success");
-      })
-      .catch((err) => {
-        console.error(err);
-        if (isActive) setLoadState("error");
-      });
-
-    return () => {
-      isActive = false;
-    };
-  }, [selectedMonth, selectedYearNumber]);
 
   const measuredBalitaIds = getMeasuredBalitaIds(pengukuranList);
   const isBalitaHadir = (balitaId: string) =>
@@ -503,7 +241,6 @@ export default function LaporanPage() {
                 <select
                   value={selectedMonth}
                   onChange={(e) => {
-                    setLoadState("loading");
                     setSelectedMonth(Number(e.target.value));
                   }}
                   className="w-full appearance-none bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 pr-10 text-sm font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-100 cursor-pointer"
@@ -530,7 +267,6 @@ export default function LaporanPage() {
                   value={selectedYear}
                   onChange={(e) => {
                     const nextYear = Number(e.target.value);
-                    setLoadState("loading");
                     setSelectedYear(e.target.value);
                     if (
                       nextYear === currentYear &&
@@ -567,31 +303,31 @@ export default function LaporanPage() {
         </Card>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-          <StatCard
+          <MetricCard
             label="Total Sasaran"
             value={totalBalita}
-            caption="Balita aktif dalam data posyandu."
+            helper="Balita aktif dalam data posyandu."
             icon={Users}
             tone="bg-blue-50 text-blue-600"
           />
-          <StatCard
+          <MetricCard
             label="Hadir"
             value={hadir}
-            caption={`${belumHadir} balita belum tercatat hadir.`}
+            helper={`${belumHadir} balita belum tercatat hadir.`}
             icon={ClipboardCheck}
             tone="bg-emerald-50 text-emerald-600"
           />
-          <StatCard
+          <MetricCard
             label="Sudah Diukur"
             value={sudahDiukur}
-            caption={`${belumDiukur} balita belum punya pengukuran periode ini.`}
+            helper={`${belumDiukur} balita belum punya pengukuran periode ini.`}
             icon={Ruler}
             tone="bg-teal-50 text-[#0d9488]"
           />
-          <StatCard
+          <MetricCard
             label="Perlu Cek"
             value={totalPerluCek}
-            caption="Belum hadir atau belum lengkap pengukurannya."
+            helper="Belum hadir atau belum lengkap pengukurannya."
             icon={AlertCircle}
             tone="bg-orange-50 text-orange-600"
           />
@@ -631,13 +367,13 @@ export default function LaporanPage() {
               </div>
 
               <div className="space-y-5">
-                <ProgressStat
+                <ProgressMetric
                   label="Cakupan Kehadiran"
                   value={attendanceRate}
                   helper={`${hadir} hadir dari ${totalBalita} sasaran`}
                   color="bg-emerald-500"
                 />
-                <ProgressStat
+                <ProgressMetric
                   label="Kelengkapan Pengukuran"
                   value={measurementRate}
                   helper={`${sudahDiukur} sudah diukur dari ${totalBalita} sasaran`}
@@ -727,7 +463,7 @@ export default function LaporanPage() {
               </div>
 
               <div className="space-y-4">
-                <ProgressStat
+                <ProgressMetric
                   label="Perempuan"
                   value={
                     totalBalita > 0
@@ -737,7 +473,7 @@ export default function LaporanPage() {
                   helper={`${perempuan} balita`}
                   color="bg-pink-400"
                 />
-                <ProgressStat
+                <ProgressMetric
                   label="Laki-laki"
                   value={
                     totalBalita > 0

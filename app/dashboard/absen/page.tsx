@@ -27,21 +27,7 @@ import { useCurrentProfile } from "@/lib/useCurrentProfile";
 import { useToast } from "@/components/ui/Toast";
 import { Absensi, Balita } from "@/types";
 import { getEffectiveAttendance } from "@/lib/measurement-status";
-
-const months = [
-  "Januari",
-  "Februari",
-  "Maret",
-  "April",
-  "Mei",
-  "Juni",
-  "Juli",
-  "Agustus",
-  "September",
-  "Oktober",
-  "November",
-  "Desember",
-];
+import { MONTH_NAMES as months } from "@/lib/constants";
 
 export default function AbsenBalitaPage() {
   const [filter, setFilter] = useState("Semua");

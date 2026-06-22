@@ -12,48 +12,23 @@ import {
   PageHeader,
   PageStatusState,
 } from "@/components/ui/PageParts";
-import { getBalitaList, getPengukuranList } from "@/lib/api";
 import { getMeasuredBalitaIds } from "@/lib/measurement-status";
 import { useCurrentProfile } from "@/lib/useCurrentProfile";
-import { Balita, Pengukuran } from "@/types";
+import { usePeriodData } from "@/lib/usePeriodData";
 
 function CariBalitaContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [searchTerm, setSearchTerm] = useState("");
-  const [balitaList, setBalitaList] = useState<Balita[]>([]);
-  const [currentPengukuran, setCurrentPengukuran] = useState<Pengukuran[]>([]);
-  const [loadState, setLoadState] = useState<"loading" | "success" | "error">(
-    "loading",
-  );
   const { isAdmin, isLoading: isRoleLoading } = useCurrentProfile();
   const isMeasurementMode = searchParams.get("mode") === "ukur";
   const currentMonth = new Date().getMonth() + 1;
   const currentYear = new Date().getFullYear();
-
-  useEffect(() => {
-    let isActive = true;
-
-    Promise.resolve().then(() => {
-      if (isActive) setLoadState("loading");
-    });
-
-    Promise.all([getBalitaList(), getPengukuranList(currentMonth, currentYear)])
-      .then(([balitaData, pengukuranData]) => {
-        if (!isActive) return;
-        setBalitaList(balitaData);
-        setCurrentPengukuran(pengukuranData);
-        setLoadState("success");
-      })
-      .catch((err) => {
-        console.error(err);
-        if (isActive) setLoadState("error");
-      });
-
-    return () => {
-      isActive = false;
-    };
-  }, [currentMonth, currentYear]);
+  const {
+    balita: balitaList,
+    loadState,
+    measurements: currentPengukuran,
+  } = usePeriodData(currentMonth, currentYear);
 
   useEffect(() => {
     let isActive = true;
