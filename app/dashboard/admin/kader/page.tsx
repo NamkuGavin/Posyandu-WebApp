@@ -29,6 +29,8 @@ import {
   getKaderList,
   updateKader,
 } from "@/lib/api";
+import { NIK_LENGTH } from "@/lib/constants";
+import { onlyDigits } from "@/lib/form-utils";
 import { CreateKaderPayload, KaderProfile, UpdateKaderPayload } from "@/types";
 
 const EMPTY_FORM: CreateKaderPayload = {
@@ -38,12 +40,6 @@ const EMPTY_FORM: CreateKaderPayload = {
   nama: "",
   password: "",
 };
-const NIK_LENGTH = 16;
-
-function onlyDigits(value: string, maxLength: number) {
-  return value.replace(/\D/g, "").slice(0, maxLength);
-}
-
 function isAdmin(user: KaderProfile | null) {
   return user?.role?.toUpperCase() === "ADMIN";
 }

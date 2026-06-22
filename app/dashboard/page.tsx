@@ -16,139 +16,40 @@ import {
   Search,
   ShieldCheck,
   Users,
-  type LucideIcon,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Navbar from "@/components/layout/Navbar";
 import Card from "@/components/ui/Card";
+import MetricCard from "@/components/dashboard/MetricCard";
+import ProgressMetric from "@/components/dashboard/ProgressMetric";
 import { PageStatusState } from "@/components/ui/PageParts";
-import { getAbsensiList, getBalitaList, getPengukuranList } from "@/lib/api";
 import {
   getEffectiveAttendance,
   getMeasuredBalitaIds,
 } from "@/lib/measurement-status";
 import { useCurrentProfile } from "@/lib/useCurrentProfile";
-import { Absensi, Balita, Pengukuran } from "@/types";
-
-const formatPercent = (value: number) => {
-  if (!Number.isFinite(value)) return "0";
-  return Number.isInteger(value) ? value.toString() : value.toFixed(1);
-};
-
-function SummaryCard({
-  label,
-  value,
-  helper,
-  icon: Icon,
-  tone,
-}: {
-  label: string;
-  value: number | string;
-  helper: string;
-  icon: LucideIcon;
-  tone: string;
-}) {
-  return (
-    <Card className="p-4 rounded-xl bg-white border-gray-100">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
-            {label}
-          </p>
-          <p className="text-2xl font-black text-gray-950 mt-2">{value}</p>
-        </div>
-        <div
-          className={`w-10 h-10 rounded-xl flex items-center justify-center ${tone}`}
-        >
-          <Icon size={20} strokeWidth={2.5} />
-        </div>
-      </div>
-      <p className="text-[11px] font-semibold text-gray-500 mt-3 leading-relaxed">
-        {helper}
-      </p>
-    </Card>
-  );
-}
-
-function ProgressMetric({
-  label,
-  value,
-  helper,
-  color,
-}: {
-  label: string;
-  value: number;
-  helper: string;
-  color: string;
-}) {
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <p className="text-sm font-black text-gray-900">{label}</p>
-          <p className="text-xs font-semibold text-gray-500 mt-0.5">{helper}</p>
-        </div>
-        <span className="text-sm font-black text-gray-950">
-          {formatPercent(value)}%
-        </span>
-      </div>
-      <div className="w-full h-3 bg-gray-100 rounded-full overflow-hidden">
-        <div
-          className={`h-full rounded-full transition-all duration-700 ${color}`}
-          style={{ width: `${Math.min(value, 100)}%` }}
-        />
-      </div>
-    </div>
-  );
-}
+import { usePeriodData } from "@/lib/usePeriodData";
 
 export default function DashboardPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [isFocused, setIsFocused] = useState(false);
-  const [balitaList, setBalitaList] = useState<Balita[]>([]);
-  const [currentPengukuran, setCurrentPengukuran] = useState<Pengukuran[]>([]);
-  const [currentAbsensi, setCurrentAbsensi] = useState<Absensi[]>([]);
-  const [loadState, setLoadState] = useState<"loading" | "success" | "error">(
-    "loading",
-  );
   const { isAdmin, isLoading: isRoleLoading } = useCurrentProfile();
   const router = useRouter();
   const searchRef = useRef<HTMLDivElement>(null);
   const currentMonth = new Date().getMonth() + 1;
   const currentYear = new Date().getFullYear();
+  const {
+    attendance: currentAbsensi,
+    balita: balitaList,
+    loadState,
+    measurements: currentPengukuran,
+  } = usePeriodData(currentMonth, currentYear, {
+    includeAttendance: true,
+  });
   const currentPeriod = new Date().toLocaleDateString("id-ID", {
     month: "long",
     year: "numeric",
   });
-
-  useEffect(() => {
-    let isActive = true;
-
-    Promise.resolve().then(() => {
-      if (isActive) setLoadState("loading");
-    });
-
-    Promise.all([
-      getBalitaList(),
-      getPengukuranList(currentMonth, currentYear),
-      getAbsensiList(currentMonth, currentYear),
-    ])
-      .then(([balitaData, pengukuranData, absensiData]) => {
-        if (!isActive) return;
-        setBalitaList(balitaData);
-        setCurrentPengukuran(pengukuranData);
-        setCurrentAbsensi(absensiData);
-        setLoadState("success");
-      })
-      .catch((err) => {
-        console.error(err);
-        if (isActive) setLoadState("error");
-      });
-
-    return () => {
-      isActive = false;
-    };
-  }, [currentMonth, currentYear]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -359,28 +260,28 @@ export default function DashboardPage() {
         </section>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <SummaryCard
+          <MetricCard
             label="Total Balita"
             value={totalBalita}
             helper="Sasaran aktif"
             icon={Users}
             tone="bg-blue-50 text-blue-600"
           />
-          <SummaryCard
+          <MetricCard
             label="Hadir"
             value={hadirBulanIni}
             helper={`${belumHadir} belum tercatat hadir`}
             icon={ClipboardCheck}
             tone="bg-emerald-50 text-emerald-600"
           />
-          <SummaryCard
+          <MetricCard
             label="Diukur"
             value={sudahDiukur}
             helper={`${belumDiukur} belum diukur`}
             icon={Ruler}
             tone="bg-teal-50 text-[#0d9488]"
           />
-          <SummaryCard
+          <MetricCard
             label="Prioritas"
             value={belumDiukurList.length}
             helper="Perlu pengukuran"
