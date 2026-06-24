@@ -1,5 +1,10 @@
 export { getAuthToken } from "@/lib/api/client";
-export { getCurrentUser, login, logout } from "@/lib/api/auth";
+export {
+  getCurrentUser,
+  login,
+  logout,
+  registerKader,
+} from "@/lib/api/auth";
 export {
   createKader,
   deleteKader,
