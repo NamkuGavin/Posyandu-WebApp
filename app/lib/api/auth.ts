@@ -5,7 +5,7 @@ import {
   setSessionCookie,
   authFetch,
 } from "@/lib/api/client";
-import { KaderProfile } from "@/types";
+import { KaderProfile, RegisterKaderPayload } from "@/types";
 
 export async function login(
   identifier: string,
@@ -31,6 +31,31 @@ export async function login(
       error: getErrorMessage(error, "Terjadi kesalahan jaringan"),
     };
   }
+}
+
+export async function registerKader(
+  payload: RegisterKaderPayload,
+): Promise<KaderProfile> {
+  const response = await publicApiFetch("/users/register", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => null);
+    const message = data?.message;
+
+    if (Array.isArray(message)) {
+      throw new Error(message.join(", "));
+    }
+
+    throw new Error(
+      typeof message === "string" ? message : "Pendaftaran akun gagal",
+    );
+  }
+
+  return response.json();
 }
 
 export async function logout(): Promise<void> {

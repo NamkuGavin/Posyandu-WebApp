@@ -5,7 +5,6 @@ import {
   AlertTriangle,
   Check,
   PencilLine,
-  Plus,
   Search,
   ShieldCheck,
   Trash2,
@@ -23,7 +22,6 @@ import {
 } from "@/components/ui/PageParts";
 import { useToast } from "@/components/ui/Toast";
 import {
-  createKader,
   deleteKader,
   getCurrentUser,
   getKaderList,
@@ -67,7 +65,7 @@ export default function AdminKaderPage() {
   const [loadState, setLoadState] = useState<
     "loading" | "success" | "error" | "forbidden"
   >("loading");
-  const [dialogMode, setDialogMode] = useState<"create" | "edit" | null>(null);
+  const [dialogMode, setDialogMode] = useState<"edit" | null>(null);
   const [selectedKader, setSelectedKader] = useState<KaderProfile | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<KaderProfile | null>(null);
   const [formData, setFormData] = useState<CreateKaderPayload>(EMPTY_FORM);
@@ -129,12 +127,6 @@ export default function AdminKaderPage() {
   const totalKader = kaderList.filter(
     (kader) => kader.role?.toUpperCase() !== "ADMIN",
   ).length;
-
-  const openCreateDialog = () => {
-    setSelectedKader(null);
-    setFormData(EMPTY_FORM);
-    setDialogMode("create");
-  };
 
   const openEditDialog = (kader: KaderProfile) => {
     if (kader.role?.toUpperCase() === "ADMIN") {
@@ -201,18 +193,15 @@ export default function AdminKaderPage() {
       return;
     }
 
-    if (dialogMode === "create" && payload.password.length < 8) {
-      warning("Password kader minimal 8 karakter.");
+    if (payload.password && payload.password.length < 8) {
+      warning("Password baru minimal 8 karakter.");
       return;
     }
 
     try {
       setIsSaving(true);
 
-      if (dialogMode === "create") {
-        await createKader(payload);
-        success("Akun kader berhasil dibuat.");
-      } else if (dialogMode === "edit" && selectedKader?.id) {
+      if (dialogMode === "edit" && selectedKader?.id) {
         const updatePayload = buildUpdatePayload(payload);
 
         if (Object.keys(updatePayload).length === 0) {
@@ -293,22 +282,14 @@ export default function AdminKaderPage() {
       <main className="p-4 sm:p-6 max-w-6xl mx-auto space-y-6 mt-2">
         <PageHeader
           eyebrow="Admin"
-          title="Manajemen Akun Kader"
-          description="Kelola akun kader yang dapat mengakses dashboard Posyandu. Pembuatan akun baru hanya tersedia untuk role admin."
-          action={
-            <button
-              type="button"
-              onClick={openCreateDialog}
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#1fb999] px-4 py-3 text-sm font-black text-white shadow-sm hover:bg-teal-600 active:scale-[0.99] transition-all"
-            >
-              <Plus size={18} />
-              Tambah Kader
-            </button>
-          }
+        title="Manajemen Akun Kader"
+          description="Pantau, perbarui, atau hapus akun kader yang telah mendaftar secara mandiri."
         />
 
         <InfoPanel title="Akses admin" icon={ShieldCheck}>
-          Gunakan halaman ini untuk membuat, memperbarui, atau menghapus akun kader. Akun admin yang sedang dipakai tidak bisa dihapus dari halaman ini.
+          Pembuatan akun dilakukan kader melalui halaman registrasi publik.
+          Admin dapat memperbarui atau menghapus akun kader, sedangkan akun
+          admin tidak dapat diubah dari halaman ini.
         </InfoPanel>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -423,7 +404,7 @@ export default function AdminKaderPage() {
             <div className="lg:col-span-2">
               <EmptyState
                 title="Akun kader tidak ditemukan"
-                description="Coba gunakan kata kunci lain atau tambahkan akun kader baru."
+                description="Coba gunakan nama, username, email, atau NIK lain."
               />
             </div>
           )}
@@ -440,12 +421,10 @@ export default function AdminKaderPage() {
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="text-[10px] font-black text-[#0d9488] uppercase tracking-widest">
-                    {dialogMode === "create" ? "Tambah Akun" : "Edit Akun"}
+                    Edit Akun
                   </p>
                   <h3 className="text-lg font-black text-gray-950 mt-1">
-                    {dialogMode === "create"
-                      ? "Tambah Akun Kader"
-                      : "Edit Akun Kader"}
+                    Edit Akun Kader
                   </h3>
                 </div>
                 <button
@@ -492,19 +471,11 @@ export default function AdminKaderPage() {
               />
               <div className="sm:col-span-2">
                 <Input
-                  label={
-                    dialogMode === "create"
-                      ? "Password"
-                      : "Password Baru (opsional)"
-                  }
+                  label="Password Baru (opsional)"
                   type="password"
                   value={formData.password}
                   onChange={(e) => handleFormChange("password", e.target.value)}
-                  placeholder={
-                    dialogMode === "create"
-                      ? "Minimal 8 karakter"
-                      : "Kosongkan jika tidak ingin mengganti password"
-                  }
+                  placeholder="Kosongkan jika tidak ingin mengganti password"
                   autoComplete="new-password"
                 />
               </div>
