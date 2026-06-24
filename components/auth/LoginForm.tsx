@@ -2,9 +2,11 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { AlertCircle, Eye, EyeOff } from "lucide-react";
+import Link from "next/link";
+import { AlertCircle } from "lucide-react";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
+import PasswordInput from "@/components/auth/PasswordInput";
 import { login } from "@/lib/api";
 
 export default function LoginForm() {
@@ -12,7 +14,6 @@ export default function LoginForm() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
   const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -46,27 +47,11 @@ export default function LoginForm() {
         autoComplete="username"
       />
 
-      <div className="relative">
-        <Input
-          label="Password"
-          type={showPassword ? "text" : "password"}
-          placeholder="Masukkan password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          className="pr-12"
-          autoComplete="current-password"
-        />
-        <button
-          type="button"
-          aria-label={
-            showPassword ? "Sembunyikan password" : "Tampilkan password"
-          }
-          onClick={() => setShowPassword(!showPassword)}
-          className="absolute right-3 top-[36px] p-2 text-gray-500 hover:text-teal-600 transition-colors rounded-lg"
-        >
-          {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
-        </button>
-      </div>
+      <PasswordInput
+        label="Password"
+        value={password}
+        onChange={setPassword}
+      />
 
       {error && (
         <div className="flex items-start gap-2 text-sm font-bold text-rose-600 bg-rose-50 p-3 rounded-xl border border-rose-100">
@@ -78,6 +63,16 @@ export default function LoginForm() {
       <Button type="submit" isLoading={loading} className="w-full">
         Masuk ke Dashboard
       </Button>
+
+      <p className="text-center text-xs font-semibold text-gray-500">
+        Belum memiliki akun kader?{" "}
+        <Link
+          href="/register"
+          className="font-black text-[#0d9488] hover:text-teal-700 hover:underline"
+        >
+          Daftar sekarang
+        </Link>
+      </p>
 
       <div className="flex items-center justify-center gap-2 pt-2">
         <div className="w-1.5 h-1.5 bg-teal-500 rounded-full animate-pulse"></div>

@@ -21,7 +21,7 @@ Catatan: versi Node.js belum dikunci di `package.json`. Gunakan Node.js versi mo
 
 ## Fitur Utama
 
-- Login kader menggunakan NIK atau username.
+- Registrasi mandiri dan login kader menggunakan NIK atau username.
 - Dashboard ringkasan Posyandu bulan berjalan.
 - Daftar, pencarian, filter, tambah, edit, dan hapus data balita.
 - Input dan update pengukuran balita per bulan.
@@ -81,6 +81,7 @@ Project ini memakai Next.js App Router. Route penting:
 | --- | --- |
 | `/` | Redirect ke `/login` |
 | `/login` | Halaman login kader |
+| `/register` | Pendaftaran akun kader secara mandiri |
 | `/dashboard` | Dashboard ringkasan |
 | `/dashboard/admin/kader` | Manajemen akun kader untuk admin |
 | `/dashboard/cari` | Pencarian balita |
@@ -148,7 +149,7 @@ Frontend mengakses backend melalui facade `app/lib/api.ts`. Implementasinya
 dipisahkan berdasarkan domain di `app/lib/api/`:
 
 - `client.ts`: base URL, token, header auth, dan penanganan `401`.
-- `auth.ts`: login, logout, dan profil pengguna.
+- `auth.ts`: registrasi, login, logout, dan profil pengguna.
 - `kader.ts`: manajemen akun kader.
 - `balita.ts`: dashboard statistik dan data balita.
 - `pengukuran.ts`: data pengukuran.
@@ -160,7 +161,7 @@ Endpoint yang digunakan:
 
 | Area | Endpoint |
 | --- | --- |
-| Auth | `POST /auth/login`, `GET /auth/me` |
+| Auth | `POST /auth/login`, `GET /auth/me`, `POST /users/register` |
 | Dashboard | `GET /beranda` |
 | Balita | `GET /balita`, `GET /balita/:id`, `POST /balita`, `PATCH /balita/:id`, `DELETE /balita/:id` |
 | Pengukuran | `POST /pengukuran`, `PATCH /pengukuran/:pengukuranId` |
@@ -177,11 +178,17 @@ Authorization: Bearer <token>
 
 Auth frontend memakai cookie `session`.
 
+- Registrasi kader dilakukan melalui endpoint publik `POST /users/register`.
+- Registrasi tidak langsung membuat session; kader masuk melalui halaman login
+  setelah akun berhasil dibuat.
 - Login sukses menyimpan `access_token` ke cookie `session`.
 - Request API setelah login memakai `Authorization: Bearer <token>`.
 - Jika backend mengembalikan status `401`, cookie `session` dihapus dan user diarahkan ke `/login`.
 - `proxy.ts` melindungi semua route `/dashboard/*`.
-- User yang sudah login dan membuka `/login` akan diarahkan ke `/dashboard`.
+- User yang sudah login dan membuka `/login` atau `/register` akan diarahkan ke
+  `/dashboard`.
+- Admin mengelola perubahan dan penghapusan akun kader. Pembuatan akun baru
+  dilakukan kader melalui registrasi publik.
 
 ## State Management
 
@@ -264,7 +271,7 @@ Jika `npm run build` gagal karena env belum ada, pastikan `.env.local` sudah ber
 - Perhatikan rule pengukuran balita: periode tidak boleh sebelum bulan lahir
   atau setelah bulan berjalan.
 - Perubahan auth perlu dicek bersama `app/lib/api/auth.ts`,
-  `app/lib/api/client.ts`, `proxy.ts`, dan halaman login.
+  `app/lib/api/client.ts`, `proxy.ts`, halaman login, dan halaman register.
 - Perubahan insight perlu menjaga hasil rule-based tetap tersedia saat Groq
   tidak dikonfigurasi.
 

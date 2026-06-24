@@ -131,4 +131,6 @@ export type CreateKaderPayload = {
   password: string;
 };
 
+export type RegisterKaderPayload = CreateKaderPayload;
+
 export type UpdateKaderPayload = Partial<CreateKaderPayload>;
