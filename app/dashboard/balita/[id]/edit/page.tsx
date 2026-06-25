@@ -271,8 +271,16 @@ export default function EditBalitaPage() {
     );
   }
 
-  const ageInMonths = calculateAgeInMonths(balita.tglLahir);
-  const isLilaDisabled = ageInMonths !== null && ageInMonths <= 6;
+  const ageAtMeasurement = calculateAgeInMonths(
+    balita.tglLahir,
+    new Date(
+      selectedMeasurementYear,
+      selectedMeasurementMonth - 1,
+      1,
+    ),
+  );
+  const isLilaDisabled =
+    ageAtMeasurement === null || ageAtMeasurement <= 6;
   const isMeasurementMissing = !selectedMeasurement;
 
   const handleSave = async () => {

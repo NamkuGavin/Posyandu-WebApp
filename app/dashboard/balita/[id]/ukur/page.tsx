@@ -40,7 +40,6 @@ export default function UkurBalitaPage() {
     "loading",
   );
   const { success, warning } = useToast();
-  const [ageInMonths, setAgeInMonths] = useState<number | null>(null);
 
   // Form states
   const [tinggi, setTinggi] = useState("");
@@ -80,6 +79,16 @@ export default function UkurBalitaPage() {
   const selectedMeasurement = measurementByPeriod[selectedPeriodKey];
   const selectedMonthName = MONTH_NAMES[selectedMonth - 1] ?? "";
   const isMeasurementLocked = isCompletedMeasurement(selectedMeasurement);
+  const ageAtMeasurement = useMemo(
+    () =>
+      calculateAgeInMonths(
+        balita?.tglLahir,
+        new Date(selectedYear, selectedMonth - 1, 1),
+      ),
+    [balita?.tglLahir, selectedMonth, selectedYear],
+  );
+  const isLilaDisabled =
+    ageAtMeasurement === null || ageAtMeasurement <= 6;
 
   useEffect(() => {
     let isActive = true;
@@ -104,9 +113,6 @@ export default function UkurBalitaPage() {
         setMeasurementByPeriod(
           getMeasurementsByPeriod(found.pengukuran ?? []),
         );
-        if (found.tglLahir) {
-          setAgeInMonths(calculateAgeInMonths(found.tglLahir));
-        }
         setLoadState("success");
       })
       .catch((err) => {
@@ -161,11 +167,11 @@ export default function UkurBalitaPage() {
     yearOptions,
   ]);
 
-  // Clean lingkarLengan if child is 6 months or under
+  // LiLA is only accepted after the child is older than 6 months.
   useEffect(() => {
     let isActive = true;
 
-    if (ageInMonths !== null && ageInMonths <= 6) {
+    if (isLilaDisabled) {
       Promise.resolve().then(() => {
         if (isActive) setLingkarLengan("");
       });
@@ -174,7 +180,7 @@ export default function UkurBalitaPage() {
     return () => {
       isActive = false;
     };
-  }, [ageInMonths]);
+  }, [isLilaDisabled]);
 
   useEffect(() => {
     let isActive = true;
@@ -276,7 +282,10 @@ export default function UkurBalitaPage() {
       beratBadan: parseFloat(berat),
       tinggiBadan: parseFloat(tinggi),
       lingkarKepala: lingkarKepala ? parseFloat(lingkarKepala) : null,
-      lingkarLengan: lingkarLengan ? parseFloat(lingkarLengan) : null,
+      lingkarLengan:
+        !isLilaDisabled && lingkarLengan
+          ? parseFloat(lingkarLengan)
+          : null,
     };
 
     if (selectedMeasurement?.id) {
@@ -296,8 +305,6 @@ export default function UkurBalitaPage() {
     success("Pengukuran berhasil disimpan.");
     router.push(`/dashboard/balita/${id}`);
   };
-
-  const isLlaDisabled = ageInMonths !== null && ageInMonths <= 6;
 
   return (
     <div className="min-h-screen bg-gray-50 text-black font-sans pb-10">
@@ -460,8 +467,10 @@ export default function UkurBalitaPage() {
             value={lingkarLengan}
             onChange={setLingkarLengan}
             hint="Untuk balita usia > 6 bulan"
-            disabled={isLlaDisabled || isMeasurementLocked}
-            placeholder={isLlaDisabled ? "Tidak wajib (≤ 6 bulan)" : "0.0"}
+            disabled={isLilaDisabled || isMeasurementLocked}
+            placeholder={
+              isLilaDisabled ? "Tidak dapat diisi (≤ 6 bulan)" : "0.0"
+            }
             dense
           />
         </div>
