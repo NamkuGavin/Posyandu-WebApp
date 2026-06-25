@@ -12,6 +12,15 @@ export type UpdatePengukuranPayload = {
   lila?: number;
 };
 
+function withOptionalLila<T extends { lila?: number | null }>(payload: T) {
+  const { lila, ...rest } = payload;
+
+  return {
+    ...rest,
+    ...(typeof lila === "number" && Number.isFinite(lila) ? { lila } : {}),
+  };
+}
+
 export async function updatePengukuranBalita(
   pengukuranId: string,
   updatedFields: UpdatePengukuranPayload,
@@ -19,7 +28,7 @@ export async function updatePengukuranBalita(
   await assertOperationalWriteAccess();
   const response = await authFetch(`/pengukuran/${pengukuranId}`, {
     method: "PATCH",
-    body: JSON.stringify(updatedFields),
+    body: JSON.stringify(withOptionalLila(updatedFields)),
   });
 
   if (!response.ok) {
@@ -34,14 +43,17 @@ export async function addPengukuran(
   pengukuran: Partial<Pengukuran>,
 ): Promise<void> {
   await assertOperationalWriteAccess();
-  const { lingkarLengan, ...rest } = pengukuran;
+  const { lingkarLengan, lila, ...rest } = pengukuran;
+  const lilaValue = lingkarLengan ?? lila;
   const response = await authFetch("/pengukuran", {
     method: "POST",
-    body: JSON.stringify({
-      balitaId,
-      lila: lingkarLengan,
-      ...rest,
-    }),
+    body: JSON.stringify(
+      withOptionalLila({
+        ...rest,
+        balitaId,
+        lila: lilaValue,
+      }),
+    ),
   });
 
   if (!response.ok) {
